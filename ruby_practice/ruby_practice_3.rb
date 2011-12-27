@@ -15,6 +15,6 @@ end
 
 t = TestClass.new
 t.a = 12
-t.b = 13
+t.b = 14
 puts t.a
 t.display
