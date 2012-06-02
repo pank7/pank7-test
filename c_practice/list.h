@@ -2,14 +2,9 @@
  * Description:                 Doubly linked list structure, copied from Linux
  *                              kernel source (version 2.6.20.1), Modified.
  *                              Header file.
- * 描述:                        双循环链表的实现，拷贝自Linux内核（2.6.20.1）。
- *                              稍作修改。头文件，使用时只需包含此头文件即可。
  * File:                        list.h
- * 文件名:                      list.h
  * Author:                      Li Yi <liyi@net.pku.edu.cn>
- * 作者:                        李一 <liyi@net.pku.edu.cn>
  * Date & Time:                 Tue Nov 13 12:49:25 2007
- * 日期 & 时间:                 Tue Nov 13 12:49:25 2007
  *
  *  <list.h>
  *  Copyright (C) 2007 Li Yi (pAnk7.yArdbird) <pank7yardbird (AT) gmail.com>
@@ -32,21 +27,21 @@
 #ifndef _LINUX_LIST_H
 #define _LINUX_LIST_H
 
-#ifdef __cplusplus              /* 使C++程序也能用。 */
+#ifdef __cplusplus
 extern "C" {
 #endif
 #if defined(WIN32) && !defined(__cplusplus)
 #define inline
 #endif
 
-#define LIST_POISON1    ((void *) 0x00100100) /* 链表节点指针的特殊标志。 */
+#define LIST_POISON1    ((void *) 0x00100100)
 #define LIST_POISON2    ((void *) 0x00200200)
-#ifndef NULL                    /* C语言中没有定义NULL。 */
+#ifndef NULL
 #define NULL            ((void *)0)
 #endif /* NULL */
 
-#ifndef offsetof                /* 宏container_of需要使用。 */
-#ifdef  __compiler_offsetof     /* 有的系统自带有此功能的宏。 */
+#ifndef offsetof
+#ifdef  __compiler_offsetof
 #define offsetof(TYPE,MEMBER) __compiler_offsetof(TYPE,MEMBER)
 #else
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
@@ -57,7 +52,6 @@ extern "C" {
         const typeof( ((type *)0)->member ) *__mptr = (ptr);                   \
         (type *)( (char *)__mptr - offsetof(type,member) );})
 
-  /* 并发互斥的处理，在用户空间的程序大多用不着。可考虑改善这里的功能。 */
 #define smp_read_barrier_depends()      do { } while(0)
 #define rcu_dereference(p)     ({                                              \
                                  typeof(p) _________p1 = p;                    \
@@ -65,7 +59,6 @@ extern "C" {
                                  (_________p1);                                \
                                 })
 
-  /* 利用CPU的cache来提高效率。 */
   static inline void prefetch(const void *x) 
   {
     ;
@@ -73,34 +66,23 @@ extern "C" {
 
   /*
    * Simple doubly linked list implementation.
-   * 简单的双循环链表的实现。
    *
    * Some of the internal functions ("__xxx") are useful when
    * manipulating whole lists rather than single entries, as
    * sometimes we already know the next/prev entries and we can
    * generate better code by using them directly rather than
    * using the generic single-entry routines.
-   * 当处理整个链表而不是单个节点的时候，有一些内部函数（“__xxx”）更有用，
-   * 因为有时候我们已经知道了前后节点，所以直接使用内部函数我们可以让写出
-   * 更好的代码。
    */
 
-  /*
-   * 在你需要链接起来的数据结构中加入一个此结构体（注意不能是list_head指针）
-   * 成员。你也可以加入多个此结构体的成员，从而可以让同一个数据结构可以加入多
-   * 个链表。
-   */
   typedef struct list_head {
     struct list_head *next, *prev;
   } list_head;
 
-#define LIST_HEAD_INIT(name) { &(name), &(name) } /* 初始化。 */
+#define LIST_HEAD_INIT(name) { &(name), &(name) }
 
-  /* 定义变量并初始化。 */
 #define LIST_HEAD(name)                                                        \
         struct list_head name = LIST_HEAD_INIT(name)
 
-  /* 初始化函数。 */
   static inline void INIT_LIST_HEAD(struct list_head *list)
   {
     list->next = list;
@@ -109,7 +91,6 @@ extern "C" {
 
   /*
    * Insert a newentry entry between two known consecutive entries.
-   * 在两个已知的连续的节点中插入一个新的节点。
    *
    * This is only for internal list manipulation where we know
    * the prev/next entries already!
