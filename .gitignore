@@ -2,3 +2,7 @@
 *.pyo
 *.o
 *.elc
+*.fas
+*.lib
+*.db
+*.log
