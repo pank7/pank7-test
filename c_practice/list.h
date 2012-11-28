@@ -7,7 +7,7 @@
  * Date & Time:                 Tue Nov 13 12:49:25 2007
  *
  *  <list.h>
- *  Copyright (C) 2007 Li Yi (pAnk7.yArdbird) <pank7yardbird (AT) gmail.com>
+ *  Copyright (C) 2012 Li Yi (pAnk7.yArdbird) <liyi84 (AT) gmail.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
