@@ -9,15 +9,16 @@
 typedef struct
 {
   int           number;
-  char          name[BUFFSIZE];
   list_head     hook;
 } data_type;
 
 int
 main(int argc, char *argv[])
 {
-  char          tmp[BUFFSIZE];
-  FILE          *fin = stdin;
+  LIST_HEAD(list);
+  int                   tmp = -1;
+  FILE                  *fin = stdin;
+  data_type             *data = NULL, *n = NULL;
 
   if (argc > 1) {
     fin = fopen(argv[1], "r");
@@ -27,8 +28,20 @@ main(int argc, char *argv[])
     exit(1);
   }
 
-  while (fgets(tmp, BUFFSIZE, fin)) {
-    fprintf(stdout, "%4ld: %s", strlen(tmp), tmp);
+  while (fscanf(fin, "%d", &tmp) != EOF) {
+    data = (data_type *)malloc(sizeof(data_type));
+    INIT_LIST_HEAD(&data->hook);
+    data->number = tmp;
+    list_add_tail(&data->hook, &list);
+  }
+
+  list_for_each_entry_reverse(data, &list, hook) {
+    fprintf(stdout, "%d\n", data->number);
+  }
+
+  list_for_each_entry_safe(data, n, &list, hook) {
+    list_del(&data->hook);
+    free((void *)data);
   }
 
   fclose(fin);
