@@ -4,8 +4,6 @@
 #include        <errno.h>
 #include        "list.h"
 
-#define         BUFFSIZE        1024
-
 typedef struct
 {
   int           number;

@@ -1,3 +1,6 @@
+#ifndef __INT_STACK
+#define __INT_STACK
+
 #include        "list.h"
 
 #ifdef  __cplusplus
@@ -19,6 +22,9 @@ extern "C" {
   int_stack_empty(int_stack_type *is);
 
   int
+  int_stack_head(int_stack_type *is);
+
+  int
   int_stack_push(int_stack_type *is, int val);
 
   int
@@ -26,3 +32,5 @@ extern "C" {
 #ifdef  __cplusplus
 }
 #endif
+
+#endif  /* __INT_STACK */
