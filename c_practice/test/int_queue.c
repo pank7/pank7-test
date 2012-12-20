@@ -100,7 +100,7 @@ int_queue_pop_back(int_queue_type *iq)
   int_listnode_type     *data = NULL;
   int                   val;
 
-  data = list_entry(iq->head.next, int_listnode_type, hook);
+  data = list_entry(iq->head.prev, int_listnode_type, hook);
   val = data->val;
   list_del(iq->head.prev);
   int_listnode_del(data);

@@ -30,6 +30,7 @@ main(int argc, char *argv[])
 
   fprintf(stdout, "queue size: %d\n", iq->size);
   fprintf(stdout, "queue front: %d\n", int_queue_front(iq));
+  fprintf(stdout, "queue back: %d\n", int_queue_back(iq));
 
   fprintf(stdout, "and then pop front 1 time...\n");
   if (!int_queue_empty(iq)) {
