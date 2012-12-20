@@ -35,5 +35,7 @@ main(int argc, char *argv[])
 
   int_stack_del(is);
 
+  fclose(fin);
+
   return 0;
 }

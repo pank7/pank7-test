@@ -2,28 +2,56 @@
 #define __INT_NODE
 
 #include        "list.h"
+#include        "rbtree.h"
 
-typedef struct int_node_type {
-  int           val;
-  list_head     hook;
-} int_node_type;
+#ifdef  __cplusplus
+extern "C" {
+#endif
 
-int_node_type *
-int_node_new()
-{
-  int_node_type         *in = NULL;
+  typedef struct int_node_type {
+    int           val;
+    list_head     hook;
+  } int_node_type;
 
-  in = (int_node_type *)malloc(sizeof(int_node_type));
-  in->val = 0;
-  INIT_LIST_HEAD(&in->hook);
+  int_node_type *
+  int_node_new()
+  {
+    int_node_type         *in = NULL;
 
-  return in;
-}
+    in = (int_node_type *)malloc(sizeof(int_node_type));
+    in->val = 0;
+    INIT_LIST_HEAD(&in->hook);
 
-void
-int_node_del(int_node_type *in)
-{
-  free((void *)in);
-}
+    return in;
+  }
+
+  void
+  int_node_del(int_node_type *in)
+  {
+    free((void *)in);
+  }
+
+  typedef struct int_setnode_type {
+    int                 val;
+    struct rb_node      hook;
+  } int_setnode_type;
+
+  int_setnode_type *
+  int_setnode_new()
+  {
+    int_setnode_type    *isn = NULL;
+
+    isn = (int_setnode_type *)malloc(sizeof(int_setnode_type));
+    isn->val = 0;
+    RB_CLEAR_NODE(&isn->hook);
+
+    return isn;
+  }
+
+  void
+  int_setnode_del(int_setnode_type *isn)
+  {
+    free((void *)isn);
+  }
 
 #endif  /* __INT_NODE */
