@@ -29,6 +29,7 @@ extern "C" {
 
   int
   int_stack_pop(int_stack_type *is);
+
 #ifdef  __cplusplus
 }
 #endif
