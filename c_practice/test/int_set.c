@@ -84,6 +84,8 @@ int_set_insert(int_set_type *is, int val)
       return 0;
     }
   }
+  data = int_setnode_new();
+  data->val = val;
   rb_link_node(&data->hook, parent, node);
   rb_insert_color(&data->hook, &is->head);
   ++is->size;
@@ -99,6 +101,7 @@ int_set_remove(int_set_type *is, int val)
   data = __int_set_search(is, val);
   if (data == NULL) return 0;
   rb_erase(&data->hook, &is->head);
+  int_setnode_del(data);
   --is->size;
 
   return 1;

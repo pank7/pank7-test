@@ -40,7 +40,7 @@ main(int argc, char *argv[])
   while (fscanf(fin, "%d", &tmp) != EOF) {
     ret = int_set_remove(is, tmp);
     if (ret) {
-      fprintf(stdout, "deleted: %d, set size: %d\n", tmp, is->size);
+      fprintf(stdout, "removed: %d, set size: %d\n", tmp, is->size);
     } else {
       fprintf(stdout, "not found: %d\n", tmp);
     }
