@@ -1,5 +1,5 @@
 TARGETS	= tut.beam useless.beam fac.beam len.beam fib.beam \
-	  recursive.beam tree.beam
+	  recursive.beam tree.beam road.beam
 
 ERLC 	= erlc
 

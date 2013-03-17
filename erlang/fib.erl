@@ -1,5 +1,5 @@
 -module(fib).
--export([fib/1, fib2/1, fib3/1]).
+-export([fib/1, fib2/1, fib3/1, main/0, main/1]).
 
 fib(0) ->
     0;
@@ -33,3 +33,19 @@ fibo3(N, {Fib1, Fib2}, Pair) when N rem 2 == 0 ->
     fibo3(N div 2, {2 * Fib1 * Fib2 - SquareFib1, SquareFib1 + Fib2 * Fib2}, Pair);
 fibo3(N, {FibA1, FibA2} = Pair, {FibB1, FibB2}) ->
     fibo3(N - 1, Pair, {FibA1 * FibB2 + FibB1 * (FibA2 - FibA1), FibA1 * FibB1 + FibA2 * FibB2}).
+
+main() ->
+    io:format(<<"Give me an integer.~n">>),
+    erlang:halt(1).
+
+main([N]) when is_list(N) ->
+    Ni = try list_to_integer(N)
+    catch
+	_:Reason -> io:format(<<"Bad argument: ~s.~n">>, [Reason]),
+		    erlang:halt(1)
+    end,
+    io:format(<<"fib(~B) = ~B.~n">>, [Ni, fib3(Ni)]),
+    erlang:halt(0);
+main(_) ->
+    io:format(<<"Unknown argument.~n">>),
+    erlang:halt(1).
