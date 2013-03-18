@@ -1,5 +1,5 @@
 TARGETS	= tut.beam useless.beam fac.beam len.beam fib.beam \
-	  recursive.beam tree.beam road.beam
+	  recursive.beam tree.beam road.beam calc.beam
 
 ERLC 	= erlc
 
@@ -15,3 +15,6 @@ clean:
 
 run_fib: fib.beam
 	erl -noshell -run fib main 300
+
+run_road: road.beam
+	erl -noshell -run road main road.txt
