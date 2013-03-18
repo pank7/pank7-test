@@ -13,3 +13,5 @@ clean:
 %.beam: %.erl
 	${ERLC} $^
 
+run_fib: fib.beam
+	erl -noshell -run fib main 300
