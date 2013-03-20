@@ -1,0 +1,2 @@
+#! /bin/sh
+erl -pa `pwd` -sname one -mnesia dir '"one"' -s robust_bank_server bstart 3020

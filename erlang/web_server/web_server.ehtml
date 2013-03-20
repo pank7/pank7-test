@@ -1,0 +1,294 @@
+<include>${MACROS}/outline.mac</include>
+
+<def name="link">
+fun(_,Str) ->
+["<a href='",Str,"'>",Str,"</a> "]
+end
+</def>
+
+<top keywords="wiki, authoring, erlang"
+     description="Documentation overview"
+     title="Main" file="bookIndex.html" />
+
+<yellowbox>
+<center>
+<i>Joe's spitting in the sawdust Erlang tutorials</i><br>
+Tutorial number 2<br>
+Last edited 2003-02-10<br>
+A webserver daemon
+</center>
+</yellowbox>
+
+  <p>This tutorial shows  you   how  to  build  a  simple
+  web  server.       All     the     code      is     <a
+href="http://www.sics.se/~joe/tutorials/web_server.tgz">here.</a>
+
+  <p>The web server runs as  a system daemon. About half this tutorial
+is concerned with  setting up a system demon. The  other half is about
+the design and implementation of a  simple web server - this web server
+is <i>extremely  simple</i> - it's only  three modules -  but it does
+illustrate a few  common programming techniques. As an  added extra I
+also show how to test the code.
+
+  <p>Please,  report  all errors,  omissions  or  improvements to  the
+author.
+  <p>
+
+<include>bookIndex.html</include>
+
+<banner>The problem</banner>
+
+<c1>Design of a web server</c1>
+
+  <p>The  web server is  typical of  a large  number of  programs.  It
+involves the  interaction between Erlang an some  entity operating in
+the outside world.
+
+<p>In order to do this in a consistent manner we write a device driver
+which we use to interface the external world with Erlang.
+
+  <p>As far as  an Erlang process is concerned,  all other objects in
+it's universe are Erlang processes.  The only thing that an Erlang
+process knows  how to do,  is how to  to send to and  receive messages
+from other Erlang processes.
+
+  <p>A  web server  is  therefore  a simple  process  that receives  a
+message  containing a request  to read  a page  and which  responds by
+sending that page to the process which requested the page.
+
+<p>The code for a simple web-server is something like:
+ 
+<box>
+receive
+   {Client, Request} ->
+	Response = generate_response(Request)
+       	Client ! {self(), Response}
+end.
+</box>
+
+  <p>Here <code>Request</code> is an Erlang term representing a parsed
+HTTP request, and <code>Response</code> is Erlang term representing an
+HTTP response.  We also  need some deep  trickery to arrange  that one
+instance of this process is started for each incoming request, the deep
+trickery is done in <link>tcp_server.erl</link>.
+
+  <p>The  above server  is pretty  simple, but  it can  only  handle a
+single request.   HTTP/1.1 persistent connections could  be handled as
+follows:
+
+<box>
+loop(Client) ->
+    receive
+	{Client, close} ->
+	    true;
+	{Client, Request} ->
+	    Response = generate_response(Request),
+	    Client ! {self(), Response},
+	    loop(Client)
+	after 10000 ->
+	    true
+    end.
+</box>
+
+  <p>This  11 line function  handles HTTP/1.1  persistent connections,
+and does data streaming etc. the entire web server code is
+in <link>web_server.erl</link>.
+
+  <p>Now recall that  HTTP requests, are not simple  Erlang terms, but
+are actually  TCP steams, which obey  an ad hock syntax  and grammar -
+just  to make life even  more interesting, the TCP  streams can be
+arbitrarily segmented.
+
+  <p>For this  reason we introduce  an intermediary process  (called a
+middle-man) The middle man is a process whose only job is to recombine
+fragmented  TCP  packets,  parse  the  packets assuming  they  are  HTTP
+requests,  and send the  requests to  the web  server.  This  is shown
+below:
+
+<p><img src="web_server.jpg">
+
+<p>The structure of the http driver is simple:
+
+<box>
+relay(Socket, Server, State) ->
+    receive
+	{tcp, Socket, Bin} ->
+	    Data = binary_to_list(Bin),
+	    parse_request(State, Socket, Server, Data);
+	{tcp_closed, Socket} ->
+	    Server ! {self(), closed};
+	{Server, close} ->
+	    gen_tcp:close(Socket);
+	{Server, {data, Data}} ->
+	    gen_tcp:send(Socket, Data),
+	    relay(Socket, Server, State);
+	{'EXIT', Server, _} ->
+	    gen_tcp:close(Socket)
+    end.
+</box>
+
+  <p>If a packet comes from the client, via a tcp socket, it is parsed
+by calling <code> parse_request/4</code>,  if a message comes from the
+server  it  is  sent  directly  to  the client,  and  if  either  side
+terminates  the connection,  or an  error  occurs in  the server,  the
+connection is closed  down. If this process terminates  for any reason
+all the connections are automatically  closed down (to see why this is
+so you should examine the link structure of the the program).
+
+<p>The variable <code>State</code> is a state variable representing the
+state of simple re-entrant parser that is used to parse the incoming
+HTTP requests.
+
+<p>This code is in <link>http_driver.erl</link>
+
+<banner>summary</banner>
+
+  <p>The    web   server    is   built    from   two    main   modules
+<link>web_server.erl</link>  and  <link>http_driver.erl</link>  -  the
+http  driver is  a simple  re-entrant parser  that interfaces  the web
+server to the external world. The web-server thinks it is taking to an
+Erlang process.   All the nasty little details  of re-entrant parsing,
+and packet assembly are hidden in a device driver.
+
+<c1>Making a system daemon</c1>
+
+<p>We want to run our web server as a system daemon.
+
+  <p>A system daemon is a program which is automatically started when
+the system is started.  To do this is system dependent. The notes below
+show how to make a system demon on my red hat 7.3 Linux machine. If anybody
+would like to mail me the details for how to do this for other operating systems I will happily include the details in the  tutorial.
+
+
+<c2>red hat 7.3</c2>
+<p>In the end of the file <code>/etc/rc.d/rc.local</code> I have edited in the following line:
+
+<box>
+# start my local demons
+/etc/rc.d/joe_services.sh &
+</box>
+
+  <p>This  runs the  script  <code>/etc/rc.d/joe_services.sh</code> in
+the background.  <i>Note the & is very important - running this in the
+foreground can be disastrous and may deadlock your system :-)</i>
+
+<p><link>joe_services.sh</link> is as follows:
+
+<include_code>joe_services.sh</include_code>
+
+  <p>This script is run  as root. The command
+<code>su joe $i start</code>  runs the shell script <code>$i</code> as
+user <code>joe</code> - note <i>not</i> as root.
+
+  <p>The  directory  <code>/home/joe/services</code>  contains,  among
+other things a file <link>web_server.sh</link> which is as follows:
+
+<include_code>web_server.sh</include_code>
+
+<p>For debugging I start the system with the command
+<code>web_server.sh debug</code>.
+
+<p>In production the server is started with the command:
+<code>web_server.sh start</code>. This starts Erlang with the flags
+<code>-detached -heart</code>
+
+<c2>Detached mode</c2>
+
+  <p>Starting Erlang with the  flag <b>-detached</b> starts Erlang in
+detached  mode.   In  detached  mode  Erlang  runs  silently  in  the
+background without a controlling terminal.
+
+<p>
+<c2>Heartbeat mode</c2>
+
+  <p>Starting Erlang  with the flag <b>-heart</b>  starts Erlang in
+heartbeat mode.  In heartbeat mode  an external program  monitors the
+Erlang system -  if the Erlang system dies the  system is restarted by
+evaluating    the    command    in    the    environment    variable
+<code>ERLANG_HEART</code>. The  value of the  environment variable is
+<code>$PA/web_server.sh  start</code>  and so  the  program just  gets
+restarted.
+
+  <p>We  can  see  this as  follows,  first  we  list all  the  Erlang
+processes  then we start  the web  server and  check which  Erlang and
+heart processes have been started:
+
+<box>
+$ ps -ax | grep erl
+$ ./web_server.sh start
+Starting Webserver
+$ ps -ax | grep erl
+31367 pts/7    S      0:00 /usr/bin/beam 
+$ ps -ax | grep heart
+31369 ?        S      0:00 heart -pid 31367
+</box>
+
+  <p>Process 31367  is the  Erlang web server.  Process 31369  is the
+heartbeat processes which is monitoring process 31367.
+
+<p>We now kill process 31367 and check to see what happens:
+
+<box>
+$ kill 31367
+$ ps -ax | grep erl
+31386 ?        S      0:00 /usr/bin/beam 
+$ ps -ax | grep heart
+31388 ?        S      0:00 heart -pid 31386
+</box>
+
+<p>here we see that a new Erlang process and a new heartbeat process were
+started. The new Erlang process 31386 is the web server
+and it is monitored by
+process 31388.
+
+  <p>The <i>only</i> way to the web server is to first kill the
+heartbeat process (31388) and then kill the Erlang process (21386).
+Alternatively, running the script <code>web_server.sh stop</code> will
+stop the web server in a controlled manner.
+
+  <p>The above method  of making a system daemon  is in practice very
+reliable.          The          Wiki         web         at         <a
+href="http://www.bluetail.com/wiki/">http://www.bluetail.com/wiki/</a>
+uses this technique  and has been running for  about two years without
+manual intervention.
+
+<c1>Increasing reliability</c1>
+
+  <P>We saw in the previous  section how to use the <b>-heart</b> flag
+to restarting the entire Erlang  system in the event of failure. While
+testing my  programs I almost automatically  perform a <i>coverage</i>
+analysis. The code in <link>web_server.erl</link> contains code to
+perform a coverage analysis. The relevant parts of the code are as follows:
+
+<box>
+cover_start() ->
+    cover:start(),
+    map(fun(I) -> cover:compile(I) end, mods()),
+    web_server:start(['4501']).
+
+cover_stop() ->
+    map(fun(I) -> cover:analyse_to_file(I) end, mods()),
+    cover:stop(),
+    erlang:halt().
+</box>
+
+  <p>To run the  coverage analysis I cold start  Erlang, then give the
+command <code>web_server:cover_start()</code> in  the Erlang shell.  I
+then  give  a  few  commands  in  my  web  browser  (to  exercise  the
+program). Then I  move back to the command shell  and give the command
+<code>web_server:cover_stop()</code> - this  produces a number of file
+with  names like <code>web_server.COVER.out</code>  - these  files can
+then be inspected  to see how many times each  individual line of code
+was evaluated.
+
+<p><i>At least - that's the theory - when I last tried this
+I got an error - if anybody knows why I'd be grateful if they told me :-)</i>
+
+  <bot/>
+
+
+
+
+
+
+

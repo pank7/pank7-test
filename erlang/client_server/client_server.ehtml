@@ -1,0 +1,166 @@
+<include>${MACROS}/outline.mac</include>
+
+<def name="link">
+fun(_,Str) ->
+["<a href='",Str,"'>",Str,"</a> "]
+end
+</def>
+
+<top keywords="socket, server, client, C, erlang"
+     description="Tutorial client server"
+     title="Main" file="bookIndex.html" />
+
+<yellowbox>
+<center>
+<i>Joe's spitting in the sawdust Erlang tutorials</i><br>
+Tutorial number 3<br>
+Last edited 2003-10-02<br>
+Client in Erlang - Server in C
+</center>
+</yellowbox>
+
+  <p>This tutorial shows  you   how  to  build  a  simple
+ client-server.       All     the     code      is     <a
+href="http://www.sics.se/~joe/tutorials/client_server.tgz">here.</a>
+
+  <p>Sometimes I want to write a client-server application where the
+client is written in Erlang and the server in C.
+This happens relatively infrequently, since the pain of writing
+a server in C is considerable. Every time I have to do this
+I forget the horrendously horrible details of forking off parallel
+processes in C and have to re-learn how socket and processes work in C.
+IMHO this is very definitely <i>you don't want to know stuff</i>.
+
+<p>This tutorial has therefore been written to document how to write
+a client in Erlang which talks to a server in C. Hopefully the code
+might be useful to somebody.
+
+  <p>Please,  report  all errors,  omissions  or  improvements to  the
+author.
+  <p>
+
+<include>bookIndex.html</include>
+
+<banner>The problem</banner>
+
+  <p>I want to make a client is Erlang and a server in C.
+The client is the easy bit:
+
+
+<include_code>client.erl</include_code>
+
+<p>This exports four routines:
+
+<ul>
+<li><code>client:tests(Ports)</code> evaluates the next three test
+functions in parallel.
+<li><code>client:test1(Port)</code>  Opens <code>Port</code>  sends a
+message to the port and waits for a reply and then closes the port.
+<li><code>client:test2(Port)</code>  Opens <code>Port</code>  sends a
+message to the port and waits for a reply and then crashes.
+<li><code>client:test3(Port)</code>  Opens <code>Port</code>  sends a
+message to the port which causes the server to crash and then waits for a replyfrom the server.
+</ul>
+
+  <p>Note  that in  all  cases  the socket  is  opened with  arguments
+<code>[binary,{packet,    2}]</code>.   The   <code>{packet,2}</code>
+directive means  that all messages  between the client and  the server
+are preceded by a two byte length count.
+
+<c1>A simple server</c1>
+
+  <p><link>server1.c</link> is my first attempt at a C server.
+I have stuffed everything into a single file.
+most of this code came from Stevens ...
+
+<include_code>server1.c</include_code>
+
+<p>The salient point of this code is the function
+<code>handle(phase, fd, n)</code>. This is called as follows:
+
+  <ul> 
+
+<li><b>At  initialization</b> - when a new connection  is made to
+the server  a parallel  process is spawned  and handle is  called with
+<code>phase = 1</code>.
+
+  <li><b>During    operation</b>   -    every   time    Erlang   calls
+<code>gen_tcp:send(Socket,  Buff)</code>  handle  will be  called  with
+<code>phase=2</code>, <code>n</code> will be  the length of the buffer
+(<code>Buff</code>), and <code>fd</code> is the file descriptor of the
+socket which connects  the server to the client.   The data involved is
+stored in the global variable <code>char *buff</code>.
+<p>To reply to the client the server must call <b>gen_reply</b>.
+
+<li><b>At termination</b> - if an error occurs anywhere, or if the
+socket is closed handle will be called with <code>phase = 3</code>
+
+</ul>
+
+<p>To run the client and server we need two windows.
+
+<p>In one shell window we run the server:
+
+
+<box>
+bash-2.05$ ./server1 1234
+opening port 1234
+</box>
+
+<p>In another window we start Erlang, and run the main test command:
+
+<box>
+bash-2.05$ erl
+Erlang (BEAM) emulator version 5.2 [source] [hipe]
+
+Eshell V5.2  (abort with ^G)
+1> client:tests(1234).
+<0.32.0>
+Socket=#Port<0.29>
+Socket=#Port<0.30>
+Socket=#Port<0.31>
+Reply 1 = {value,{tcp,#Port<0.29>,<<97,99,107>>}}
+Reply 2 = {value,{tcp,#Port<0.30>,<<97,99,107>>}}
+Reply 3 = {value,{tcp_closed,#Port<0.31>}}
+</box>
+
+<p>In window one we can see what happened:
+<box>
+bash-2.05$ ./server1 1234
+opening port 1234
+handle 13411 starting
+handle 13412 starting
+handle 13411 received 9 bytes:hello joe
+handle 13411 sending ack
+handle 13412 received 9 bytes:hello joe
+handle 13412 sending ack
+handle 13411 stopping
+handle 13412 stopping
+handle 13413 starting
+handle 13413 received 10 bytes:*hello joe
+</box>
+
+  <p>Note that  because of the  concurrency the output from  the three
+parallel processes is interleaved.
+
+  <p>Also note that process 13413 crashed and thus there is no code to
+say that  it stopped. The crash  was, however, detected  by the Erlang
+processes.
+
+<c1>A callback server</c1>
+
+<p>As a final tweak to the server program we break it into
+two files <link>gen_server.c</link> and <link>server2.c</link>.
+
+  <p><b>gen_sever.c</b> is just  our old friend <b>server1.c</b> where
+I  have abstracted  out the  handler function  and a  function pointer
+instead of as a statically linked function.
+
+  <p>The resulting code in <b>server2.c</b> is IMHO <i>much</i> easier
+to understand :-)
+
+  <p>Here is <b>server2.c</b>.
+
+<include_code>server2.c</include_code>
+
+  <bot/>

@@ -1,0 +1,60 @@
+<body bgcolor=white>
+<ul>
+<h3>The Pico Erlang server</h3>
+<p>For the following link to work, the shell command
+<b>start_4501</b> must have been given.
+
+<center>
+<h3><a href="http://localhost:4501/test.html">Enter</a></h3>
+</center>
+
+<h3>API</h3>
+
+    <p>The   pico  web   server   is  accessed   through  the   module
+<b>pico_http_server.erl</b> - this has the following interface:
+<p>
+<dl>
+<dt><b>pico_http_server:start(Port, Max, Mod, Args) -> bool()</b>
+<dd>Start a http server. <br><b>Port</b> is the port number for the
+server.
+<br><b>Max</b> in the maximum number of simultaneous connections to the
+server.
+<br><b>Mod</b> is the name of a callback module.
+<br><b>Args</b> are arguments to the callback module.
+<dt><b>pico_http_server:stop(Port, Reason) -> State</b>
+
+<dd>Stops the server
+</dl>
+
+<h3>Callbacks</h3>
+<p>The callback module (<b>Mod</b> in the above) must export the
+following routines:
+<p>
+<dl>
+<dt><b>start_handler(Arg) -> State</b>
+<dd><b>Arg</b> is a list of the arguments supplied in the <b>start</b>
+call.
+Returns <b>State</b>.
+<dt><b>event_handler(Event, State) -> {Reply, State'}</b>
+<dd>Event handler. <b>Event</b> is a parse tree representing an HTTP
+GET or PUT event. <b>State</b> is the last returned value from either
+a <b>start_handler</b> or <b>event_handler</b>. Returns a string to be
+sent back to the server and a new state.
+<dt><b>stop(Reason, State) -> State'</b>
+<dd>Terminate the server. <b>Reason</b> is the reason for
+termination. <b>State</b> is the last returned value from either
+a <b>start_handler</b> or <b>event_handler</b>. Returns a new state.
+</dl>
+
+
+
+
+
+
+</ul>
+
+
+
+
+
+

@@ -1,0 +1,2 @@
+
+-record(account, {name,balance}).

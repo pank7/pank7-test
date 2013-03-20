@@ -1,0 +1,459 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta name="KEYWORDS"
+content="socket, server, client, C, erlang">
+<meta name="DESCRIPTION"
+content="Tutorial client server">
+<title>Main</title>
+</head>
+<body bgcolor="white">
+<center>
+<table width='80%'><tr><td>
+<table cellspacing=0 cellpadding=4 border=0 bgcolor='#FFFF66' width='100%'>
+<tr><td>
+<center>
+<i>Joe's spitting in the sawdust Erlang tutorials</i><br>
+Tutorial number 3<br>
+Last edited 2003-10-02<br>
+Client in Erlang - Server in C
+</center>
+</td></tr></table>
+<p>This tutorial shows you how to build a simple
+client-server. All the code is <a
+href="http://www.sics.se/~joe/tutorials/client_server.tgz">here.</a>
+<p>Sometimes I want to write a client-server application where the
+client is written in Erlang and the server in C.
+This happens relatively infrequently, since the pain of writing
+a server in C is considerable. Every time I have to do this
+I forget the horrendously horrible details of forking off parallel
+processes in C and have to re-learn how socket and processes work in C.
+IMHO this is very definitely <i>you don't want to know stuff</i>.
+<p>This tutorial has therefore been written to document how to write
+a client in Erlang which talks to a server in C. Hopefully the code
+might be useful to somebody.
+<p>Please, report all errors, omissions or improvements to the
+author.
+<p>
+<a href="#m1">1. A simple server</a><br>
+<a href="#m2">2. A callback server</a><br>
+<p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>The problem</td></tr></table>
+<p>I want to make a client is Erlang and a server in C.
+The client is the easy bit:
+<p><table border=1 cellpadding=5 bgcolor="#FFFCC" width="100%"><tr><td><pre><b>-module(client).
+
+%% Socket client routines
+%% Author: Joe Armstrong &lt;joe@sics.se>
+%% Date:   2003-10-02
+
+-export([tests/1, test1/1, test2/1, test3/1]).
+
+tests(Port) ->
+    spawn(fun() -> test1(Port) end),
+    spawn(fun() -> test2(Port) end),
+    spawn(fun() -> test3(Port) end).
+
+%% send a single message to the server wait for
+%% a reply and close the socket
+
+test1(Port) ->
+    case gen_tcp:connect("localhost", Port, [binary,{packet, 2}]) of
+	{ok, Socket} ->
+	    io:format("Socket=~p~n",[Socket]),
+	    gen_tcp:send(Socket, "hello joe"),
+	    Reply = wait_reply(Socket),
+	    io:format("Reply 1 = ~p~n", [Reply]),
+	    gen_tcp:close(Socket);
+	_ ->
+	    error
+    end.
+
+test2(Port) ->
+    case gen_tcp:connect("localhost", Port,
+			 [binary,{packet, 2}]) of
+	{ok, Socket} ->
+	    io:format("Socket=~p~n",[Socket]),
+	    gen_tcp:send(Socket, "hello joe"),
+	    Reply = wait_reply(Socket),
+	    io:format("Reply 2 = ~p~n", [Reply]),
+	    exit(1);
+	_ ->
+	    error
+    end.
+
+test3(Port) ->
+    case gen_tcp:connect("localhost", Port,
+			 [binary,{packet, 2}]) of
+	{ok, Socket} ->
+	    io:format("Socket=~p~n",[Socket]),
+	    gen_tcp:send(Socket, [42|"hello joe"]),
+	    Reply = wait_reply(Socket),
+	    io:format("Reply 3 = ~p~n", [Reply]);
+	_ ->
+	    error
+    end.
+
+wait_reply(X) ->
+    receive
+	Reply ->
+	    {value, Reply}
+    after 100000 ->
+	    timeout
+    end.
+
+
+</b></pre></td></tr></table>
+<p>This exports four routines:
+<ul>
+<li><tt><b>client:tests(Ports)</b></tt> evaluates the next three test
+functions in parallel.
+<li><tt><b>client:test1(Port)</b></tt> Opens <tt><b>Port</b></tt> sends a
+message to the port and waits for a reply and then closes the port.
+<li><tt><b>client:test2(Port)</b></tt> Opens <tt><b>Port</b></tt> sends a
+message to the port and waits for a reply and then crashes.
+<li><tt><b>client:test3(Port)</b></tt> Opens <tt><b>Port</b></tt> sends a
+message to the port which causes the server to crash and then waits for a replyfrom the server.
+</ul>
+<p>Note that in all cases the socket is opened with arguments
+<tt><b>[binary,{packet, 2}]</b></tt>. The <tt><b>{packet,2}</b></tt>
+directive means that all messages between the client and the server
+are preceded by a two byte length count.
+<a name="m1"></a><p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>1.&nbsp;A simple server</td></tr></table>
+<p><a href='server1.c'>server1.c</a> is my first attempt at a C server.
+I have stuffed everything into a single file.
+most of this code came from Stevens ...
+<p><table border=1 cellpadding=5 bgcolor="#FFFCC" width="100%"><tr><td><pre><b>/* 
+ * Parallel socket server.
+ * Forks off a new process for every new connection.
+ * Adapted from Stevens - Unix Network Programming.
+ *
+ * Author: Joe Armstrong
+ * Date: 2003-10-02
+ * Usage:
+ *   server &lt;port>
+ */ 
+
+#include	&lt;stdio.h>
+#include	&lt;sys/socket.h>
+#include	&lt;arpa/inet.h>
+#include        &lt;varargs.h>
+
+/* this buffer is used to store all the socket data */
+
+char buf[65536];
+
+/*VARARGS1*/
+err_quit(va_alist)
+va_dcl
+{
+  va_list         args;
+  char            *fmt;
+  
+  va_start(args);
+  fmt = va_arg(args, char *);
+  vfprintf(stderr, fmt, args);
+  fputc('\n', stderr);
+  va_end(args);
+  
+  exit(1);
+}
+
+/*
+ * Read "n" bytes from a descriptor.
+ * Use in place of read() when fd is a stream socket.
+ */
+
+int readn(int fd, char *ptr, int nbytes)
+{
+  int	nleft, nread;
+  
+  nleft = nbytes;
+  while (nleft > 0) {
+    nread = read(fd, ptr, nleft);
+    if (nread &lt; 0)
+      return(nread);		/* error, return &lt; 0 */
+    else if (nread == 0)
+      break;			/* EOF */
+    nleft -= nread;
+    ptr   += nread;
+  }
+  return(nbytes - nleft);		/* return >= 0 */
+}
+
+/*
+ * Write "n" bytes to a descriptor.
+ * Use in place of write() when fd is a stream socket.
+ */
+
+int writen(int fd, char *ptr, int nbytes)
+{
+  int	nleft, nwritten;
+  
+  nleft = nbytes;
+  while (nleft > 0) {
+    nwritten = write(fd, ptr, nleft);
+    if (nwritten &lt;= 0)
+      return(nwritten);		/* error */
+    nleft -= nwritten;
+    ptr   += nwritten;
+  }
+  return(nbytes - nleft);
+}
+
+main(int argc, char* argv[])
+{
+  int port,sockfd, newsockfd, clilen, childpid, err;
+  struct sockaddr_in cli_addr, serv_addr;
+
+  if (argc != 2)
+    err_quit("usage: server &lt;port>\n");
+
+  if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) &lt; 0)
+    err_quit("server: can't open stream socket");
+
+  port = atoi(argv[1]);
+  printf("opening port %d\n", port);
+
+  bzero((char *) &serv_addr, sizeof(serv_addr));
+  serv_addr.sin_family      = AF_INET;
+  serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  serv_addr.sin_port        = htons(port);
+  
+  if ((err = bind(sockfd, (struct sockaddr *) &serv_addr, 
+		  sizeof(serv_addr))) &lt; 0)
+    err_quit("server: can't bind local address %d", err);
+  listen(sockfd, 5);
+  for ( ; ; ) {
+    clilen = sizeof(cli_addr);
+    newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+    if (newsockfd &lt; 0)
+      err_quit("server: accept error");
+    if ( (childpid = fork()) &lt; 0)
+      err_quit("server: fork error");
+    else if (childpid == 0) {
+      close(sockfd);		
+      handle(1, newsockfd, 0);
+      loop(newsockfd);	
+      handle(3, newsockfd, 0);
+      exit(0);
+    }
+    close(newsockfd);
+  }
+}
+
+/* The socket protocol is 2 byte length then the data */
+
+loop(int fd)
+{
+  char *p;
+  int again, n, i;
+
+  while(1){
+    p = buf;
+    i = readn(fd, buf, 2);
+    if(i==0)
+      /* socket closed */
+      break;
+    else if (i == 2){
+      n = (*buf)*256 + *(buf+1);
+      i = readn(fd, buf, n);
+      if (i != n)
+	break;
+      handle(2, fd, n);
+    } else {
+      /* protocol error */
+      break;
+    }
+  }
+}
+
+/*
+ * handle *must* call gen_reply
+ */
+
+handle(int phase, int fd, int n)
+{
+  int i;
+  switch (phase)
+    {
+    case 1:
+      printf("handle %d starting\n", getpid());
+      break;
+    case 2:
+      printf("handle %d received %d bytes:", getpid(), n);
+      for(i=0;i&lt;n;i++)
+	putchar(buf[i]);
+      printf("\r\n");
+      /* just for fun crash if buf[0] = 42 */
+      if(buf[0] == 42)
+	exit(1);
+      strcpy(buf, "ack");
+      gen_reply(fd, buf, 3);
+      printf("handle %d sending ack\n", getpid());
+      break;
+    case 3:
+      printf("handle %d stopping\n", getpid());
+      break;
+    }
+}
+
+gen_reply(int fd, char *p, int n)
+{
+  char out[2];
+  out[0] = n >> 8;
+  out[1] = n & 0xff;
+  writen(fd, out, 2);
+  writen(fd, p, n);
+}
+
+  
+    
+
+
+</b></pre></td></tr></table>
+<p>The salient point of this code is the function
+<tt><b>handle(phase, fd, n)</b></tt>. This is called as follows:
+<ul> <li><b>At initialization</b> - when a new connection is made to
+the server a parallel process is spawned and handle is called with
+<tt><b>phase = 1</b></tt>.
+<li><b>During operation</b> - every time Erlang calls
+<tt><b>gen_tcp:send(Socket, Buff)</b></tt> handle will be called with
+<tt><b>phase=2</b></tt>, <tt><b>n</b></tt> will be the length of the buffer
+(<tt><b>Buff</b></tt>), and <tt><b>fd</b></tt> is the file descriptor of the
+socket which connects the server to the client. The data involved is
+stored in the global variable <tt><b>char *buff</b></tt>.
+<p>To reply to the client the server must call <b>gen_reply</b>.
+<li><b>At termination</b> - if an error occurs anywhere, or if the
+socket is closed handle will be called with <tt><b>phase = 3</b></tt>
+</ul>
+<p>To run the client and server we need two windows.
+<p>In one shell window we run the server:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+bash-2.05$ ./server1 1234
+opening port 1234
+</b></pre></td></tr></table></ul>
+<p>In another window we start Erlang, and run the main test command:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+bash-2.05$ erl
+Erlang (BEAM) emulator version 5.2 [source] [hipe]
+
+Eshell V5.2  (abort with ^G)
+1> client:tests(1234).
+<0.32.0>
+Socket=#Port<0.29>
+Socket=#Port<0.30>
+Socket=#Port<0.31>
+Reply 1 = {value,{tcp,#Port<0.29>,<<97,99,107>>}}
+Reply 2 = {value,{tcp,#Port<0.30>,<<97,99,107>>}}
+Reply 3 = {value,{tcp_closed,#Port<0.31>}}
+</b></pre></td></tr></table></ul>
+<p>In window one we can see what happened:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+bash-2.05$ ./server1 1234
+opening port 1234
+handle 13411 starting
+handle 13412 starting
+handle 13411 received 9 bytes:hello joe
+handle 13411 sending ack
+handle 13412 received 9 bytes:hello joe
+handle 13412 sending ack
+handle 13411 stopping
+handle 13412 stopping
+handle 13413 starting
+handle 13413 received 10 bytes:*hello joe
+</b></pre></td></tr></table></ul>
+<p>Note that because of the concurrency the output from the three
+parallel processes is interleaved.
+<p>Also note that process 13413 crashed and thus there is no code to
+say that it stopped. The crash was, however, detected by the Erlang
+processes.
+<a name="m2"></a><p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>2.&nbsp;A callback server</td></tr></table>
+<p>As a final tweak to the server program we break it into
+two files <a href='gen_server.c'>gen_server.c</a> and <a href='server2.c'>server2.c</a> .
+<p><b>gen_sever.c</b> is just our old friend <b>server1.c</b> where
+I have abstracted out the handler function and a function pointer
+instead of as a statically linked function.
+<p>The resulting code in <b>server2.c</b> is IMHO <i>much</i> easier
+to understand :-)
+<p>Here is <b>server2.c</b>.
+<p><table border=1 cellpadding=5 bgcolor="#FFFCC" width="100%"><tr><td><pre><b>/* 
+ * Parallel socket server.
+ * Author: Joe Armstrong &lt;joe@sics.se>
+ * Date: 2003-10-02
+ *
+ * Usage:
+ *   server2 &lt;port>
+ */ 
+
+#include	&lt;stdio.h>
+
+/* this buffer is used to communicate with the client */
+
+char buf[65536];
+
+/* handle will be called every time something happens
+ *   phase = 1 means a connection is starting
+ *         = 2 means the client has sent a message to the
+ *	       server. The length of the message is n
+ *	       and the data is in buf[0..n-1]
+ *	       The client *must* reply by calling
+ *	          gen_reply(int fd, char *p, int m)
+ *	       this returns the data in p[0..m-1] to the client
+ *	   = 3 means the client has disconnected
+ */
+
+my_handler(int phase, int fd, int n)
+{
+  int i;
+  switch (phase)
+    {
+    case 1:
+      printf("handle %d starting\n", getpid());
+      break;
+    case 2:
+      printf("handle %d received %d bytes:", getpid(), n);
+      for(i=0;i&lt;n;i++)
+	putchar(buf[i]);
+      printf("\r\n");
+      /* just for fun crash if buf[0] = 42 */
+      if(buf[0] == 42)
+	exit(1);
+      strcpy(buf, "ack");
+      gen_reply(fd, buf, 3);
+      printf("handle %d sending ack\n", getpid());
+      break;
+    case 3:
+      printf("handle %d stopping\n", getpid());
+      break;
+    }
+}
+
+main(int argc, char *argv[])
+{
+  int port;
+
+  if (argc != 2)
+    err_quit("usage: server &lt;port>\n");
+  
+  port = atoi(argv[1]);
+  gen_server(port, my_handler);
+
+}
+
+
+
+</b></pre></td></tr></table>
+</td></tr></table></center></body></html>

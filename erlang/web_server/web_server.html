@@ -1,0 +1,310 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta name="KEYWORDS"
+content="wiki, authoring, erlang">
+<meta name="DESCRIPTION"
+content="Documentation overview">
+<title>Main</title>
+</head>
+<body bgcolor="white">
+<center>
+<table width='80%'><tr><td>
+<table cellspacing=0 cellpadding=4 border=0 bgcolor='#FFFF66' width='100%'>
+<tr><td>
+<center>
+<i>Joe's spitting in the sawdust Erlang tutorials</i><br>
+Tutorial number 2<br>
+Last edited 2003-02-10<br>
+A webserver daemon
+</center>
+</td></tr></table>
+<p>This tutorial shows you how to build a simple
+web server. All the code is <a
+href="http://www.sics.se/~joe/tutorials/web_server.tgz">here.</a>
+<p>The web server runs as a system daemon. About half this tutorial
+is concerned with setting up a system demon. The other half is about
+the design and implementation of a simple web server - this web server
+is <i>extremely simple</i> - it's only three modules - but it does
+illustrate a few common programming techniques. As an added extra I
+also show how to test the code.
+<p>Please, report all errors, omissions or improvements to the
+author.
+<p>
+<a href="#m1">1. Design of a web server</a><br>
+<a href="#m2">2. Making a system daemon</a><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#m2.1">2.1. red hat 7.3</a><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#m2.2">2.2. Detached mode</a><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="#m2.3">2.3. Heartbeat mode</a><br>
+<a href="#m3">3. Increasing reliability</a><br>
+<p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>The problem</td></tr></table>
+<a name="m1"></a><p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>1.&nbsp;Design of a web server</td></tr></table>
+<p>The web server is typical of a large number of programs. It
+involves the interaction between Erlang an some entity operating in
+the outside world.
+<p>In order to do this in a consistent manner we write a device driver
+which we use to interface the external world with Erlang.
+<p>As far as an Erlang process is concerned, all other objects in
+it's universe are Erlang processes. The only thing that an Erlang
+process knows how to do, is how to to send to and receive messages
+from other Erlang processes.
+<p>A web server is therefore a simple process that receives a
+message containing a request to read a page and which responds by
+sending that page to the process which requested the page.
+<p>The code for a simple web-server is something like:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+receive
+   {Client, Request} ->
+	Response = generate_response(Request)
+       	Client ! {self(), Response}
+end.
+</b></pre></td></tr></table></ul>
+<p>Here <tt><b><font size='-1'>Request</font></b></tt> is an Erlang term representing a parsed
+HTTP request, and <tt><b><font size='-1'>Response</font></b></tt> is Erlang term representing an
+HTTP response. We also need some deep trickery to arrange that one
+instance of this process is started for each incoming request, the deep
+trickery is done in <a href='tcp_server.erl'>tcp_server.erl</a> .
+<p>The above server is pretty simple, but it can only handle a
+single request. HTTP/1.1 persistent connections could be handled as
+follows:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+loop(Client) ->
+    receive
+	{Client, close} ->
+	    true;
+	{Client, Request} ->
+	    Response = generate_response(Request),
+	    Client ! {self(), Response},
+	    loop(Client)
+	after 10000 ->
+	    true
+    end.
+</b></pre></td></tr></table></ul>
+<p>This 11 line function handles HTTP/1.1 persistent connections,
+and does data streaming etc. the entire web server code is
+in <a href='web_server.erl'>web_server.erl</a> .
+<p>Now recall that HTTP requests, are not simple Erlang terms, but
+are actually TCP steams, which obey an ad hock syntax and grammar -
+just to make life even more interesting, the TCP streams can be
+arbitrarily segmented.
+<p>For this reason we introduce an intermediary process (called a
+middle-man) The middle man is a process whose only job is to recombine
+fragmented TCP packets, parse the packets assuming they are HTTP
+requests, and send the requests to the web server. This is shown
+below:
+<p><img src="web_server.jpg">
+<p>The structure of the http driver is simple:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+relay(Socket, Server, State) ->
+    receive
+	{tcp, Socket, Bin} ->
+	    Data = binary_to_list(Bin),
+	    parse_request(State, Socket, Server, Data);
+	{tcp_closed, Socket} ->
+	    Server ! {self(), closed};
+	{Server, close} ->
+	    gen_tcp:close(Socket);
+	{Server, {data, Data}} ->
+	    gen_tcp:send(Socket, Data),
+	    relay(Socket, Server, State);
+	{'EXIT', Server, _} ->
+	    gen_tcp:close(Socket)
+    end.
+</b></pre></td></tr></table></ul>
+<p>If a packet comes from the client, via a tcp socket, it is parsed
+by calling <tt><b><font size='-1'> parse_request/4</font></b></tt>, if a message comes from the
+server it is sent directly to the client, and if either side
+terminates the connection, or an error occurs in the server, the
+connection is closed down. If this process terminates for any reason
+all the connections are automatically closed down (to see why this is
+so you should examine the link structure of the the program).
+<p>The variable <tt><b><font size='-1'>State</font></b></tt> is a state variable representing the
+state of simple re-entrant parser that is used to parse the incoming
+HTTP requests.
+<p>This code is in <a href='http_driver.erl'>http_driver.erl</a> <p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>summary</td></tr></table>
+<p>The web server is built from two main modules
+<a href='web_server.erl'>web_server.erl</a> and <a href='http_driver.erl'>http_driver.erl</a> - the
+http driver is a simple re-entrant parser that interfaces the web
+server to the external world. The web-server thinks it is taking to an
+Erlang process. All the nasty little details of re-entrant parsing,
+and packet assembly are hidden in a device driver.
+<a name="m2"></a><p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>2.&nbsp;Making a system daemon</td></tr></table>
+<p>We want to run our web server as a system daemon.
+<p>A system daemon is a program which is automatically started when
+the system is started. To do this is system dependent. The notes below
+show how to make a system demon on my red hat 7.3 Linux machine. If anybody
+would like to mail me the details for how to do this for other operating systems I will happily include the details in the tutorial.
+<a name="m2.1"></a><p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>2.1.&nbsp;red hat 7.3</td></tr></table>
+<p>In the end of the file <tt><b><font size='-1'>/etc/rc.d/rc.local</font></b></tt> I have edited in the following line:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+# start my local demons
+/etc/rc.d/joe_services.sh &
+</b></pre></td></tr></table></ul>
+<p>This runs the script <tt><b><font size='-1'>/etc/rc.d/joe_services.sh</font></b></tt> in
+the background. <i>Note the & is very important - running this in the
+foreground can be disastrous and may deadlock your system :-)</i>
+<p><a href='joe_services.sh'>joe_services.sh</a> is as follows:
+<p><table border=1 cellpadding=5 bgcolor="#FFFCC" width="100%"><tr><td><pre><b>#!/bin/sh
+## start my local demons
+
+for i in /home/joe/services/*.sh 
+  do
+    /bin/su joe $i start
+  done
+</b></pre></td></tr></table>
+<p>This script is run as root. The command
+<tt><b><font size='-1'>su joe $i start</font></b></tt> runs the shell script <tt><b><font size='-1'>$i</font></b></tt> as
+user <tt><b><font size='-1'>joe</font></b></tt> - note <i>not</i> as root.
+<p>The directory <tt><b><font size='-1'>/home/joe/services</font></b></tt> contains, among
+other things a file <a href='web_server.sh'>web_server.sh</a> which is as follows:
+<p><table border=1 cellpadding=5 bgcolor="#FFFCC" width="100%"><tr><td><pre><b>#!/bin/sh
+ 
+##
+## usage web_server.sh {start|stop|debug}
+##
+ 
+##   PA   = path to the web server
+##   PORT  = port to run as
+ 
+PA=$HOME/tutorials/dev/web_server
+PORT=4501
+ERL=/usr/local/bin/erl
+HOSTNAME=`hostname`
+export HEART_COMMAND="$PA/web_server.sh start"
+
+case $1 in
+
+  start)
+    $ERL -boot start_sasl -sname webserver001 -pa $PA \
+         -heart -detached -s web_server start $PORT 
+    echo  "Starting Webserver"
+    ;;
+ 
+  debug)
+    $ERL -sname  webserver001 -pa $PA -s web_server start $PORT
+    ;;
+ 
+  stop)
+    $ERL -noshell -sname webserver_stopper -pa $PA \
+           -s web_server stop webserver001@$HOSTNAME
+    echo "Stopping webserver"
+    ;;
+ 
+  *)
+    echo "Usage: $0 {start|stop|debug}"
+    exit 1
+esac
+ 
+exit 0
+                    
+</b></pre></td></tr></table>
+<p>For debugging I start the system with the command
+<tt><b><font size='-1'>web_server.sh debug</font></b></tt>.
+<p>In production the server is started with the command:
+<tt><b><font size='-1'>web_server.sh start</font></b></tt>. This starts Erlang with the flags
+<tt><b><font size='-1'>-detached -heart</font></b></tt>
+<a name="m2.2"></a><p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>2.2.&nbsp;Detached mode</td></tr></table>
+<p>Starting Erlang with the flag <b>-detached</b> starts Erlang in
+detached mode. In detached mode Erlang runs silently in the
+background without a controlling terminal.
+<p>
+<a name="m2.3"></a><p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>2.3.&nbsp;Heartbeat mode</td></tr></table>
+<p>Starting Erlang with the flag <b>-heart</b> starts Erlang in
+heartbeat mode. In heartbeat mode an external program monitors the
+Erlang system - if the Erlang system dies the system is restarted by
+evaluating the command in the environment variable
+<tt><b><font size='-1'>ERLANG_HEART</font></b></tt>. The value of the environment variable is
+<tt><b><font size='-1'>$PA/web_server.sh start</font></b></tt> and so the program just gets
+restarted.
+<p>We can see this as follows, first we list all the Erlang
+processes then we start the web server and check which Erlang and
+heart processes have been started:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+$ ps -ax | grep erl
+$ ./web_server.sh start
+Starting Webserver
+$ ps -ax | grep erl
+31367 pts/7    S      0:00 /usr/bin/beam 
+$ ps -ax | grep heart
+31369 ?        S      0:00 heart -pid 31367
+</b></pre></td></tr></table></ul>
+<p>Process 31367 is the Erlang web server. Process 31369 is the
+heartbeat processes which is monitoring process 31367.
+<p>We now kill process 31367 and check to see what happens:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+$ kill 31367
+$ ps -ax | grep erl
+31386 ?        S      0:00 /usr/bin/beam 
+$ ps -ax | grep heart
+31388 ?        S      0:00 heart -pid 31386
+</b></pre></td></tr></table></ul>
+<p>here we see that a new Erlang process and a new heartbeat process were
+started. The new Erlang process 31386 is the web server
+and it is monitored by
+process 31388.
+<p>The <i>only</i> way to the web server is to first kill the
+heartbeat process (31388) and then kill the Erlang process (21386).
+Alternatively, running the script <tt><b><font size='-1'>web_server.sh stop</font></b></tt> will
+stop the web server in a controlled manner.
+<p>The above method of making a system daemon is in practice very
+reliable. The Wiki web at <a
+href="http://www.bluetail.com/wiki/">http://www.bluetail.com/wiki/</a>
+uses this technique and has been running for about two years without
+manual intervention.
+<a name="m3"></a><p><table cellpadding=4 cellspacing=0 border=0 bgcolor="#CCFFCC"width="100%"><tr><td><p align=left>3.&nbsp;Increasing reliability</td></tr></table>
+<P>We saw in the previous section how to use the <b>-heart</b> flag
+to restarting the entire Erlang system in the event of failure. While
+testing my programs I almost automatically perform a <i>coverage</i>
+analysis. The code in <a href='web_server.erl'>web_server.erl</a> contains code to
+perform a coverage analysis. The relevant parts of the code are as follows:
+<ul><table border=1 cellpadding=10>
+<tr>
+<td>
+<pre>
+<b>
+cover_start() ->
+    cover:start(),
+    map(fun(I) -> cover:compile(I) end, mods()),
+    web_server:start(['4501']).
+
+cover_stop() ->
+    map(fun(I) -> cover:analyse_to_file(I) end, mods()),
+    cover:stop(),
+    erlang:halt().
+</b></pre></td></tr></table></ul>
+<p>To run the coverage analysis I cold start Erlang, then give the
+command <tt><b><font size='-1'>web_server:cover_start()</font></b></tt> in the Erlang shell. I
+then give a few commands in my web browser (to exercise the
+program). Then I move back to the command shell and give the command
+<tt><b><font size='-1'>web_server:cover_stop()</font></b></tt> - this produces a number of file
+with names like <tt><b><font size='-1'>web_server.COVER.out</font></b></tt> - these files can
+then be inspected to see how many times each individual line of code
+was evaluated.
+<p><i>At least - that's the theory - when I last tried this
+I got an error - if anybody knows why I'd be grateful if they told me :-)</i>
+</td></tr></table></center></body></html>

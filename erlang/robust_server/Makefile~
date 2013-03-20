@@ -1,0 +1,24 @@
+.SUFFIXES: .erl .beam .ear
+
+.erl.beam:
+	ecc -W $<
+
+MODS= bank robust_bank_client bank_client robust_bank_manager \
+      bank_manager robust_bank_server bank_server tcp_server
+
+all:  {MODS:%=%.beam} robust_server.html
+
+robust_server.html: robust_server.ehtml  ${MODS:%=%.erl}
+	ehtml2html robust_server.ehtml
+
+tarball: robust_server.html *.erl
+	rm -f *.beam
+	rm -rf one two
+	cd ..; tar hcvf - robust_server | gzip > robust_server.tgz
+
+publish: robust_server.html
+	rm -f *.beam
+	make tarball
+	cp * /home/joe/public_html/tutorials/robust_server
+	cp ../robust_server.tgz /home/joe/public_html/tutorials
+

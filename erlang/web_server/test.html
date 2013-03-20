@@ -1,0 +1,185 @@
+<body bgcolor="white">
+<h1>A pico WWW server</h1>
+
+<p><b>pico</b> is a <i>pico</i> web server written
+in <img src="erl.gif">.
+
+<h3>Normal hypertext links</h3>
+<ul>
+<li><a href="itworks.html">itworks.html</a>
+<li><a href="itworks.html">itworks.html?a=b&c=d</a>
+<li><a href="erl.gif">erl.gif</a>
+<li><a
+href="cgi/pico_demo_handler/show?is=a+b+c&foo=bar+baz">cgi/pico_demo_handler/show?is=a+b+c&foo=bar+baz</a>
+(this link will be found)
+<li><a
+href="cgi/wikie/show_page?Page=top">cgi/wikie/show_page?Page=top</a>
+(this cgi functions is disallowed)
+
+</ul>
+
+<h3>Several different buttons</h3>
+
+<table border=2>
+<tr>
+<td>
+<FORM METHOD=GET ACTION="cgi/pico_demo_handler/show">
+Enter your password: <INPUT NAME=password TYPE=password SIZE=8>
+<INPUT NAME=invisible TYPE=hidden VALUE="A hidden value">
+<INPUT TYPE=submit Name="button" VALUE="Start">
+<INPUT TYPE=submit Name="button" VALUE="Stop">
+</FORM>
+</td>
+</tr>
+</table>
+
+
+<h3>A hidden and password field</h3>
+
+<table border=2>
+<tr>
+<td>
+<FORM METHOD=GET ACTION="cgi/pico_demo_handler/show">
+Enter your password: <INPUT NAME=password TYPE=password SIZE=8>
+<INPUT NAME=invisible TYPE=hidden VALUE="A hidden value">
+<INPUT TYPE=submit VALUE="Test this form">
+</FORM>
+</td>
+</tr>
+</table>
+
+<h3>Simpl–e entries</h3>
+<table border=2>
+<tr>
+<td>
+<Form method=GET action="cgi/pico_demo_handler/show">
+Name: <INPUT NAME="name"><br> 
+Key:  <INPUT Name="address">
+<INPUT TYPE=SUBMIT VALUE="Test this form">
+</Form>
+</td>
+</tr>
+</table>
+<h3>Check boxes</h3>
+<table border=2>
+<tr>
+<td>
+<FORM METHOD="GET" ACTION="cgi/pico_demo_handler/show">
+<UL>
+<BR><INPUT TYPE=checkbox NAME="baseball" VALUE="Y">Baseball
+<BR><INPUT TYPE=checkbox NAME="basketball" VALUE="Y">Basketball
+<BR><INPUT TYPE=checkbox NAME="football" VALUE="Y">Football
+<BR><INPUT TYPE=checkbox NAME="hockey" VALUE="Y">Hockey
+<BR><INPUT TYPE=checkbox NAME="soccer" VALUE="Y">Soccer
+</UL>
+<P>
+<INPUT TYPE="submit" VALUE="Test this form">
+<INPUT TYPE="reset" VALUE="Clear Choices">
+</P>
+</FORM>
+</td>
+</tr>
+</table>
+
+
+<h3>Check boxes with defaults</h3>
+
+<table border=2>
+<tr>
+<td>
+<FORM METHOD="GET" ACTION="cgi/pico_demo_handler/show">
+
+Which of the following sports do you enjoy watching? (choose any combination)
+
+<UL>
+<BR><INPUT TYPE=checkbox NAME=baseball VALUE="Y" CHECKED>Baseball
+<BR><INPUT TYPE=checkbox NAME=basketball VALUE="Y">Basketball
+<BR><INPUT TYPE=checkbox NAME=football VALUE="Y" CHECKED>Football
+<BR><INPUT TYPE=checkbox NAME=hockey VALUE="Y">Hockey
+<BR><INPUT TYPE=checkbox NAME=soccer VALUE="Y">Soccer
+</UL>
+<P>
+<INPUT TYPE=submit VALUE="Submit">
+<INPUT TYPE=reset VALUE="Reset to Defaults">
+</P>
+</FORM>
+</td>
+</tr>
+</table>
+
+<h3>Radio buttons</h3>
+<table border=2>
+<tr>
+<td>
+<FORM METHOD="GET" ACTION="cgi/pico_demo_handler/show">
+Which one of these languages is your favorite?
+<UL>
+<BR><INPUT TYPE="radio" NAME="lang" VALUE="erlang" CHECKED>Erlang
+<BR><INPUT TYPE="radio" NAME="lang" VALUE="lisp">Lisp
+<BR><INPUT TYPE="radio" NAME="lang" VALUE="java">Java
+<BR><INPUT TYPE="radio" NAME="lang" VALUE="fortran">Fortran
+<BR><INPUT TYPE="radio" NAME="lang" VALUE="pascal">Pascal
+</UL>
+<INPUT TYPE=submit VALUE="Test this form">
+<INPUT TYPE=reset VALUE="Reset">
+</FORM>
+</td>
+</tr>
+</table>
+<p>
+<hr>
+<h1>Errors</h1>
+
+  <p>The form below uses POST to submit the form.
+
+<p>
+<table border=2>
+<tr>
+<td>
+<FORM METHOD=POST ACTION="cgi/pico_demo_handler/show">
+Enter your password: <INPUT NAME=password TYPE=password SIZE=8>
+<INPUT NAME=invisible TYPE=hidden VALUE="A hidden value">
+<INPUT NAME=henry VALUE="This is a value">
+<INPUT TYPE=submit VALUE="Test this form">
+</FORM>
+</td>
+</tr>
+</table>
+
+<p><table border=2>
+<tr>
+<td>
+<FORM ACTION="cgi-bin/mailto?mail=joe@nospam.sics.se"
+ METHOD=POST>
+<P>Please tell your opinion about the overall quality of
+this document:
+<SELECT NAME=evaluation>
+<OPTION SELECTED>No opinion
+<OPTION>Very poor
+<OPTION>Rather poor
+<OPTION>Average
+<OPTION>Rather good
+<OPTION>Very good
+</SELECT>
+</P><P>
+You can also be more specific by writing a few comments:
+<TEXTAREA NAME=Comments ROWS=5 COLS=72></TEXTAREA>
+</P><P>
+<INPUT TYPE=SUBMIT VALUE=Send></P>
+</FORM>
+</td>
+</tr>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+

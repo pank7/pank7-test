@@ -1,0 +1,471 @@
+<include>${MACROS}/outline.mac</include>
+
+<def name="link">
+fun(_,Str) ->
+["<a href='",Str,"'>",Str,"</a> "]
+end
+</def>
+
+<top keywords="xml, authoring, erlang"
+     description="Documentation overview"
+     title="Main" file="bookIndex.html" />
+
+<yellowbox>
+<center>
+<i>Joe's spitting in the sawdust Erlang tutorials</i><br>
+Tutorial number 1<br>
+Last edited 2003-02-13<br>
+A Fault-tolerant server
+</center>
+</yellowbox>
+
+  <p>This tutorial shows  you   how  to  build  a  simple
+  fault-tolerant     server.       All     the     code      is     <a
+href="http://www.sics.se/~joe/tutorials/robust_server.tgz">here.</a>
+
+  <p>The example chosen is a  "bank" server - the "server" is actually
+a  pair of  servers  - if  both servers  crash  - then  the system  is
+unavailable.  If one server crashes, the other server takes over. Data
+is fully  replicated on both  servers.
+
+  <p>Please,  report  all errors,  omissions  or  improvements to  the
+author.
+  <p>
+
+<include>bookIndex.html</include>
+
+<banner>The problem</banner>
+
+  <p>We want  to make  a <i>bank</i> server.  The bank server  models the
+behaviour of a  real bank. You can deposit money  with the bank, query
+the status of your account and take money out of your account.
+
+  <p>Banks, being  suspicious by nature do  not let you  take out more
+money than you have in your account.
+
+  <p>Banks   are   worried   about   security  and   like   to   offer
+round-the-clock services.  If one of  their computer fails  they still
+like to  serve their customers.  In the event  of a failure  they like
+everything to work  as if the failure had  not occurred. In particular
+even of a failure  they do not want you to remove  more money from you
+account than you have deposited ...
+
+<banner>A fault-tolerant server</banner>
+
+
+  <p>In  order to  make a fault-tolerant system  you need  at least
+  <red>two</red>  computers. No  matter how  good your  software  is you 
+  cannot make a fault-tolerant system using only one computer - if you
+have only one computer and it crashes you application will break.
+
+  <p>We will use two servers, 
+  all data will be replicated on both servers.
+
+  <p>There are two choices for how we structure our applications:
+
+<ol>
+<li>The client only knows about one server, or,
+<li>The client knows about <i>both</i> servers
+</ol>
+
+  <p>In the first case the  client knows <red>one</red> IP address (or
+  domain name)  and if the server  at this IP  address fails, some
+  combination  of hardware  or software  at  the server  site has  to
+  arrange that  packets sent  to the IP  address of the  server always
+arrive at a functioning machine.
+
+  <p>There are various techniques for  this, none of them are simple -
+  most  of them  involve  deep trickery,  these  solutions are  highly
+  non-portable.
+
+  <p>In the  second case the  client has <red>two</red>  addresses for
+the server.  When the client wishes  to do something it uses the first
+address. If the machine at this  address is broken, it uses the second
+address. This method is easy to implement and needs no special purpose
+hardware. This method is well proven,  and is, for example used by DNS.
+We will use this method in our server.
+
+  <p>In  the  following  example  we  will show  how  to  program  the
+fault-tolerant server in a number
+  of  small steps,  firstly, we  develop a  simple  non-fault tolerant
+  server, then extend it to make a fault tolerant server.
+
+<c1>A simple server</c1>
+
+  <p>We start with a very simple server. It is non fault-tolerant.  If
+the server  crashes, hopefully no data  will be lost.  But the service
+will not operate.
+
+  <p>This  solution does  not  involve distributed  Erlang. Their  are
+several reasons for this:
+
+<ul>
+<li>Distributed Erlang has <i>all or nothing</i> security 
+<a href="#note1">[1]</a>
+(so this is just too dangerous)
+<li>Distributed Erlang was not designed for thousands of clients
+</ul>
+
+<p>The client-server communication is based on simple socket communication.
+<c2>A simple client</c2>
+
+<p>We start with the <a href="bank_client.erl">bank_client.erl</a>
+
+<include_code>bank_client.erl</include_code>
+
+<p>This is a simple "no frills" client, that accesses a bank server.
+
+<p>The address of the bank server is "hard wired" into the program
+at address <code>localhost</code> and port <code>3010</code>.
+
+  <p>Since  we are  not using  distributed Erlang  we have  to  do all
+encoding and decoding  of Erlang terms ourselves. This  is achieved by
+using   <code>term_to_binary</code>    to   encode   the    term   and
+<code>binary_to_term</code> to decode the term.
+
+  <p>Note  also   that  the  socket  was  opened   with  the  argument
+<code>{packet, 4}</code>  - this must  match up with  a corresponding
+argument in  the server code. <code>{packet, 4}</code>  means that all
+packets  will be  preceded by  a 4  byte length  count and  that the
+library  routines  in   <code>gen_tcp</code>  will  correctly  assemble
+fragmented  packets, in  other words,  the user  won't have  to worry
+about TCP IP packet fragmentation since only competed packets will be
+delivered to the Erlang processes involved.
+
+<c2>A simple socket based server</c2>
+
+<p><a href="bank_server.erl">bank_server.erl</a>
+which communicates with the client is:
+
+<include_code>bank_server.erl</include_code>
+
+<p>Again this is a "no frills" sever. The server port is hard-wired to
+<code>3010</code>
+
+<p>Most of the work is done in <a href="tcp_server.erl">tcp_server.erl</a>.
+<code>tcp_server</code> keeps track of the number of socket sessions etc.
+
+  <p>Note also  that we use mnesia to  keep track of the  state of our
+  bank balance.
+
+<c2>Initializing the data-base</c2>
+<p>Our server stores all data in a disk based data-base -
+<a href="bank_manager.erl">bank_manager.erl</a> is used to initialize
+the data base before the program can be run.
+<include_code>bank_manager.erl</include_code>
+
+<p>To initialize the bank, we have to start Erlang and run the command
+<code>bank_manager:init_bank()</code>.
+<red>This command must be done once only</red>.
+
+<c2>Data base access routines</c2>
+
+<p>Finally the code to access the data base:
+
+  <p>The  data  base  consists  of a  number  of  <code>account</code>
+records stored in the header file <a href="bank.hrl">bank.hrl</a>.
+
+<include_code>bank.hrl</include_code>
+<p>These are manipulated with code in  <a href="bank.erl">bank.erl</a>:
+<include_code>bank.erl</include_code>
+<p>
+<c2>Running the program</c2>
+
+<p>We'll done go through all the steps necessary to run the program.
+
+  <p>We start  two shells.  In shell one  we compile the  program and
+  start the server:
+
+<box>
+$ erlc *.erl
+[joe@enfield simple_socket_server]$ erl
+Erlang (BEAM) emulator version 5.2 [source] [hipe]
+
+Eshell V5.2  (abort with ^G)
+1> bank_manager:init_bank().
+stopped
+
+=INFO REPORT==== 18-Dec-2002::11:39:43 ===
+    application: mnesia
+    exited: stopped
+    type: temporary
+2> bank_server:start().
+<0.107.0>
+Starting a port server on 3010...
+3>
+</box>
+
+  <p>First we  compiled all  the Erlang code  <code>erlc *.erl</code>,
+started       Erlang,       initialized       the      data       base
+<code>bank_manager:init_bank()</code>  and finally started  the server
+<code>bank_server:start()</code>.
+
+<p>Now we can move to a second window, start Erlang and access the server:
+<box>
+ erl
+Erlang (BEAM) emulator version 5.2 [source] [hipe]
+
+Eshell V5.2  (abort with ^G)
+1> bank_client:balance("joe").
+{atomic,{error,no_such_account}}
+2> bank_client:deposit("joe", 10).
+{atomic,10}
+3> bank_client:deposit("joe", 15).
+{atomic,25}
+4> bank_client:balance("joe").
+{atomic,{ok,25}}
+5> bank_client:withdraw("joe", 1234).
+{atomic,{error,not_enough_money}}
+6> bank_client:withdraw("joe", 12).
+{atomic,ok}
+7> bank_client:balance("joe").
+{atomic,{ok,13}}
+8>
+</box>
+
+<p><red>Everything works fine, but if the server crashes all is lost.</red>
+
+<p>The next section makes a fault-tolerant version of the program using
+two servers. If one of the severs crashes, the other server will be used.
+The user will not notice that the server has crashed, read on ...
+
+<c1>A fault tolerant server</c1>
+
+<p>To make our fault-tolerant server we use not one machine but two.
+
+  <p>The two servers both run distributed Erlang and trust each other.
+
+<p>The clients  know the hostnames and  ports that are  used to access
+the server.
+
+<c2>A robust client</c2>
+
+<p>As in our simple example we start with the client code 
+<link>robust_bank_client.erl</link>:
+
+<include_code>robust_bank_client.erl</include_code>
+
+  <p>This  bank client  knows that  there  are two  servers. For  each
+transaction  it   generates  a  unique  transaction   Id  (by  calling
+<code>new_ref()</code>).
+
+  <p>The client first  tries to contact the first  server sending with
+  it the query and a unique tag.
+
+  <p>If the  client cannot connect to  the server it  tries the second
+  server,  and if  this attempt  fails the  entire  transaction fails
+  since both servers are broken.
+
+  <p>If the server  manages to connect to the first  server and send a
+  message to the  server, it will never know if  the server managed to
+  process  the request,  thus is  the server  does not  reply or  if a
+  timeout occurs then  the client does  not know if the  sever received
+  the  message and  performed the  transaction, or  if the  message was
+  never received. 
+
+  <p>In  the case  of a  failed  transaction the  client contacts  the
+  second server and repeats the request  it made to the first server -
+  each  request is  tagged  with a  unique  tag. Every  time a  server
+  replies the value  of the reply is stored in  the data base together
+  with the  tag. Before performing  a computation the server  checks to
+  see if there is a return  value associated with a particular tag - if
+  so this value  is send and the computation  is not repeated. Since
+  all data  is reliably replicated  across both server  this strategy
+  ensures  that computations  will be  idempotent -  i.e.  carried out
+  either once or not at all.
+
+  <p>When  the client  has received  a return  value from  one  of the
+servers  it  responds with  a  <code>{delete_tag, Id}</code>  message
+which causes the server to erase the cached value of the return value
+to the client.  If this  message never arrives, no errors will occur
+(since a  new unique tag is  generated for each  new transaction), but
+only cached return values might  accumulate in the data base. For this
+reason cached return values should  probably be date stamped and given
+a certain  "time to live" - they  can be garbage collected  at a later
+date, if this  is a problem. This  is not done in this  version of the
+program.
+
+<c2>A robust server</c2>
+
+  <p>The code for  <link>robust_bank_server.erl</link> is very similar
+to that of a  non-robust server:
+
+<include_code>robust_bank_server.erl</include_code>
+
+<p>There are only a small number of minor changes to the code, when compared to the not robust code.
+
+<c2>Initializing the data base</c2>
+
+<p>Now things become slightly more complicated. Instead of one data base we
+need two - also we need to get our node names correct. This is done in
+<link>robust_bank_manager.erl</link>
+
+<include_code>robust_bank_manager.erl</include_code>
+
+<p>This assumes that there are two  nodes called <code>one@enfield</code> and
+<code>two@enfield</code>.
+
+  <p>To initialize  the system  we open two  terminal windows (on  enfield) and
+ proceed as follows:
+
+<p>In xterm 1.
+
+<box>
+$ erl -sname one -mnesia dir '"one"'
+Erlang (BEAM) emulator version 5.2 [source] [hipe]
+
+Eshell V5.2  (abort with ^G)
+</box>
+
+<p>In xterm 2:
+<box>
+$ erl -sname two -mnesia dir '"two"'
+Erlang (BEAM) emulator version 5.2 [source] [hipe]
+
+Eshell V5.2  (abort with ^G)
+(two@enfield)1> robust_bank_manager:create_schema().
+ok
+(two@enfield)2> mnesia:start().
+ok
+</box>
+
+<p>In xterm 1:
+<box>
+(one@enfield)1> mnesia:start().
+ok
+(one@enfield)2> robust_bank_manager:create_table().
+</box>
+
+<p>The  ctrl-c in <i>both</i> xterms.
+
+
+<c2>Now we are ready to run everything</c2>
+<p>At this point you need to open <i>three</i> terminal windows.
+
+  <p>Open window  1 and  run the shell  script <link>start_one</link>,
+open window  2 and run  the shell script  <link>start_two</link>. This
+will start two servers, one listening to port 3020 the other listening
+to  3030.  <p>Open  a  third window  and  start Erlang.  In what  what
+follows the  output show is what  happens in the  third Erlang window.
+<p>To  kill a  server, you  move to  the appropriate  window  and type
+Control+C.   To restart  a server  you type  <code>start_one</code> (or
+<code>start_two</code>), in the appropriate window:
+
+
+<banner>Query the server</banner>
+
+<box>
+> robust_bank_client:balance("joe").
+trying to connect to server 1
+sending to server 1
+server 1 replied
+{ok,{server1,{atomic,{ok,7}}}}
+</box>
+
+<p>Both servers are running - server one replies:
+
+<banner>Kill server one, and re-do the query</banner>
+<box>
+4> robust_bank_client:balance("joe").
+trying to connect to server 1
+cannot connect to server 1
+trying to connect to server 2
+sending to server 2
+{ok,{server2,{atomic,{ok,7}}}}
+</box>
+
+<p>This time server 2 replies (we killed server one, remember).
+
+<banner>Make a deposit</banner>
+We make a deposit of 10 units,
+<box>
+5> robust_bank_client:deposit("joe", 10).
+trying to connect to server 1
+cannot connect to server 1
+trying to connect to server 2
+sending to server 2
+{ok,{server2,{atomic,17}}}
+</box>
+
+<p>Only  server two is running - so the transaction takes place
+on server two.
+
+<banner>Restart server one and query the balance</banner>
+<box>
+6> robust_bank_client:balance("joe").
+trying to connect to server 1
+sending to server 1
+server 1 replied
+{ok,{server1,{atomic,{ok,17}}}}
+</box>
+
+<p>Server one replies with 17 units <red>well done server one</red>.
+
+  <p>When server one was restarted - the two servers synced their data
+and the changes made to server two were propagated to server one.
+
+<banner>Kill server two and query the balance</banner>
+<box>
+> robust_bank_client:balance("joe").
+trying to connect to server 1
+sending to server 1
+server 1 replied
+{ok,{server1,{atomic,{ok,17}}}}
+</box>
+
+<p>Server one replies ...
+
+<c1>Summing up</c1>
+
+  <p>The intention  here was not  to make the  ultimate fault-tolerant
+server,  but rather  to  illustrate  how to  make  a simple  functioning
+server, with  no detail omitted.  A production server could  be based
+on this simple design, but  would involve a slightly less simplistic
+approach. The following improvements, might be considered:
+
+<ul>
+
+  <li> To  make queries idempotent I  cache the last  return value and
+deleted it  when the  client has received  the return  value.  Certain
+errors might cause cached return  values not to be deleted, this could
+occur, for  example, if  the <code>delete_tag</code> message  from the
+client to the server is never received.  These cached values could be
+garbage collected at some suitable interval.
+
+  <li>I  use "disk  replicated" mnesia  tables -  a  more sophisticated
+design using  combinations of  disk replicated tables  (for persistent
+data)  and  memory replicated  tables  (for  reply  caching) might  be
+better.
+
+<li> <i>Suggested by Dominic Williams</i>
+When server1 is down, each transaction will have degraded performance,
+because the client still starts by trying one. An improved client would
+remember the last server that worked and use it first before trying the other
+server.
+
+</ul>
+
+<c1>Notes</c1>
+<a name="note1">
+<banner>Security</banner> 
+
+<p>Dominic Williams asked what "all or nothing security" meant.
+
+<p>Once you get distributed Erlang running a remote node can do anything
+to a remote node that is allowed by the user privileges of the
+remote node.
+
+<p>All nodes in a distributed Erlang node can do anything they want on
+other nodes in the system - this is *very* dangerous.
+I could easily do a <code>os:cmd("rm -rf *")</code> on a remote machine
+and blow away the entire remote user's filesystem.
+
+  <p>If you want to write  distributed applications, you can choose to
+either  not use  distributed Erlang  and  use an  explicit socket  for
+everything -  in which case  you strictly check everything  coming into
+you system, or, set up  a special user with restricted privileges, and
+run the Erlang node from within this user. This tutorial showed how to
+do things with an explicit socket.
+
+
+  <bot/>
