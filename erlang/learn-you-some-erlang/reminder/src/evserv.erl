@@ -42,7 +42,7 @@ subscribe(Pid) ->
         {'DOWN', Ref, process, _Pid, Reason} ->
             {error, Reason}
     after 5000 ->
-        {error, timeout}
+	    {error, timeout}
     end.
 
 add_event(Name, Description, TimeOut) ->
@@ -51,7 +51,7 @@ add_event(Name, Description, TimeOut) ->
     receive
         {Ref, Msg} -> Msg
     after 5000 ->
-        {error, timeout}
+	    {error, timeout}
     end.
 
 add_event2(Name, Description, TimeOut) ->
@@ -61,7 +61,7 @@ add_event2(Name, Description, TimeOut) ->
         {Ref, {error, Reason}} -> erlang:error(Reason);
         {Ref, Msg} -> Msg
     after 5000 ->
-        {error, timeout}
+	    {error, timeout}
     end.
 
 cancel(Name) ->
@@ -70,7 +70,7 @@ cancel(Name) ->
     receive
         {Ref, ok} -> ok
     after 5000 ->
-        {error, timeout}
+	    {error, timeout}
     end.
 
 listen(Delay) ->
@@ -78,7 +78,7 @@ listen(Delay) ->
         M = {done, _Name, _Description} ->
             [M | listen(0)]
     after Delay*1000 ->
-        []
+	    []
     end.
 
 %%% The Server itself
