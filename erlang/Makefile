@@ -1,7 +1,8 @@
 TARGETS	= tut.beam useless.beam fac.beam len.beam fib.beam \
 	  recursive.beam tree.beam road.beam calc.beam \
 	  keyval_benchmark.beam records.beam dolphins.beam \
-	  kitchen.beam multiproc.beam linkmon.beam
+	  kitchen.beam multiproc.beam linkmon.beam kitty_server.beam \
+	  my_server.beam kitty_gen_server.beam
 
 ERLC 	= erlc
 
