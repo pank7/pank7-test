@@ -94,13 +94,10 @@ main(int argc, char *argv[])
   else printf("%d\n", sp);
 
   for (i = 0; i < rows; ++i) {
-    // for (j = 0; j < columns; ++j) {
-    //   printf("%c ", map[i][j]);
-    // }
-    // printf("\n");
     free((void *)map[i]);
     free((void *)spmap[i]);
   }
+  free((void *)map);
   free((void *)spmap);
 
   return 0;
