@@ -1,6 +1,6 @@
 TARGETS 	= test_list.out test_rbtree.out test_list_rbtree.out \
 		hello_world.out test_int_stack.out test_int_set.out \
-		test_int_queue.out
+		test_int_queue.out test_sort.out
 OBJECTS		= rbtree.o test_list.o test_rbtree.o int_stack.o \
 		int_set.o
 
@@ -43,4 +43,7 @@ test_int_set.out: test_int_set.o int_set.o rbtree.o
 	${CC} ${OFLAGS} $^ -o $@
 
 test_list_rbtree.out: test_list_rbtree.o rbtree.o
+	${CC} ${OFLAGS} $^ -o $@
+
+test_sort.out: test_sort.o sort.o
 	${CC} ${OFLAGS} $^ -o $@
