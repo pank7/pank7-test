@@ -9,7 +9,6 @@ main = do putStrLn "What's your name?"
 
 lstlen :: [a] -> Int
 lstlen lst = lstlen' lst 0
-       where
-         lstlen' [] n = n
-         lstlen' (s:ss) n = lstlen' ss $ n + 1
-
+    where
+      lstlen' [] n = n
+      lstlen' (s:ss) n = lstlen' ss $ n + 1
