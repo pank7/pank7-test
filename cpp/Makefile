@@ -1,5 +1,5 @@
-CC = clang
-CPP = clang++
+CC = gcc-4.8
+CPP = g++-4.8
 CFLAGS = -std=c++11 -Wall -c
 OFLAGS = 
 TARGETS = test.out

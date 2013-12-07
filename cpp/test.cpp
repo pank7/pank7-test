@@ -16,13 +16,13 @@ main(int argc, char *argv[])
     std::sort(score.begin(), score.end());
 
     while (*score.begin() < 60) {
-        for (int i = 0; i <= score.size(); ++i) {
-            score[i] = sqrt(score[i]) * 10;
+        for (auto &s: score) {
+            s = sqrt(s) * 10;
         }
     }
 
-    for (auto i = score.begin(); i < score.end(); ++i) {
-        std::cout << *i << std::endl;
+    for (auto s: score) {
+        std::cout << s << std::endl;
     }
 
     return 0;

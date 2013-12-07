@@ -10,6 +10,10 @@ main(int argc, char *argv[])
         a[i] = i * 10;
     }
 
+    for (auto &e : a) {
+        e += 1;
+    }
+
     for (auto it = a.begin(); it != a.end(); ++it) {
         std::cout << *it << std::endl;
     }
