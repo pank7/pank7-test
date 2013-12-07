@@ -1,13 +1,16 @@
-#include    <iostream>
-#include    <vector>
-#include    <algorithm>
-#include    <cmath>
+#include        <iostream>
+#include        <vector>
+#include        <algorithm>
+#include        <cmath>
+#include        <cctype>
 
 int
 main(int argc, char *argv[])
 {
     std::vector<double>     score;
     double                  s;
+
+    std::cout << std::ispunct(',') << std::endl;
 
     while (std::cin >> s) {
         score.push_back(s);

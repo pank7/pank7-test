@@ -1,7 +1,7 @@
-CC = gcc-4.8
-CPP = g++-4.8
+CC = clang
+CPP = clang++
 CFLAGS = -std=c++11 -Wall -c
-OFLAGS = 
+OFLAGS =
 TARGETS = test.out
 
 all: ${TARGETS}

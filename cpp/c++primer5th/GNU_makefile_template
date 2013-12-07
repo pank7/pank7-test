@@ -3,8 +3,8 @@
 # -std=c++0x enables ISO C++ 11 standard
 # -I.. pulls in the Version_test.h file for conditional compilation
 #      of code the uses features that might not yet be implemented
-CC = g++
-CCFLAGS = -std=c++0x -I..
+CC = g++-4.8
+CCFLAGS = -std=c++11 -O1 -I..
 
 # Some programs include headers defined in earlier chapters
 # LOCFLAGS used to set tell the compiler where to find a
