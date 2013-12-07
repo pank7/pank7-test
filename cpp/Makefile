@@ -1,6 +1,6 @@
 CC = clang
 CPP = clang++
-CFLAGS = -Wall -c
+CFLAGS = -std=c++11 -Wall -c
 OFLAGS = 
 TARGETS = test.out
 

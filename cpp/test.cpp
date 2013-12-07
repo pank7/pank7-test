@@ -21,8 +21,7 @@ main(int argc, char *argv[])
         }
     }
 
-    for (std::vector<double>::iterator i = score.begin();
-            i < score.end(); ++i) {
+    for (auto i = score.begin(); i < score.end(); ++i) {
         std::cout << *i << std::endl;
     }
 
