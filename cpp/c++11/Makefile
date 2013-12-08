@@ -2,6 +2,7 @@ CC = gcc-4.8
 CPP = g++-4.8
 CFLAGS = -std=c++11 -Wall -c
 OFLAGS =
+OBJECTS =
 TARGETS = test.out
 
 all: ${TARGETS}
@@ -16,5 +17,5 @@ test.out: test.o
 	${CPP} ${OFLAGS} -o $@ $^
 
 clean:
-	rm -f *.o
-	rm ${TARGETS}
+	rm -f *.o ${OBJECTS}
+	rm -f ${TARGETS}

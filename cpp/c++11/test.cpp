@@ -1,5 +1,10 @@
 #include        <iostream>
 #include        <array>
+#include        <random>
+
+#include        <ctime>
+
+#include        "selection.hpp"
 
 constexpr int
 get_size(bool foo)
@@ -11,19 +16,22 @@ int
 main(int argc, char *argv[])
 {
     constexpr int               c = get_size(false);
-    std::array<int, c>          a({1,2,3,4,5,6,7,8,9,0});
+    std::array<int, c>          a;
 
-    for (auto i = 0; i < c; ++i) {
-        a[i] = i * 10;
-    }
+    std::uniform_int_distribution<int>  u(0, 1000);
+    std::default_random_engine  re(time(NULL));
+
+    u(re);
 
     for (auto &e : a) {
-        e += 1;
+        e = u(re);
+        std::cout << e << " ";
     }
+    std::cout << std::endl;
 
-    for (auto it = a.cbegin(); it != a.cend(); ++it) {
-        std::cout << *it << std::endl;
-    }
+    std::cout << "selection(a, 7) = "
+              << *selection(a, 7)
+              << std::endl;
 
     return 0;
 }
