@@ -5,7 +5,7 @@ CPP = g++-4.8
 CFLAGS = -std=c++11 -Wall -g -c
 OFLAGS =
 OBJECTS =
-TARGETS = test.out test2.out test3.out
+TARGETS = test.out test2.out test3.out test4.out
 
 all: ${TARGETS}
 
