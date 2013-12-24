@@ -29,6 +29,12 @@ public:
         {
             std::cout << "[" << this << "|" << __LINE__ << "]: Destructor" << std::endl;
         }
+    C &
+    operator=(C const &o)
+        {
+            std::cout << "[" << this << "|" << __LINE__ << "]: Operator =" << std::endl;
+            return *this;
+        }
     void
     hoge()
         {
@@ -46,12 +52,11 @@ int
 main(int argc, char *argv[])
 {
     auto        c1 = foobar1();
-//    auto        c2 = (c1);
-//    auto        c3 = C(std::forward<C>(foobar1()));
-    auto        c3 = C(foobar1());
+    auto        c2 = c1;
+    auto        c3 = C(std::forward<C>(foobar1()));
 
     c1.hoge();
-//    c2.hoge();
+    c2.hoge();
     c3.hoge();
 
     return 0;
