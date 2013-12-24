@@ -1,11 +1,13 @@
 .PHONY: all clean
 
-CC = gcc-4.8
-CPP = g++-4.8
-CFLAGS = -std=c++11 -Wall -g -c
-OFLAGS =
+CC = clang
+CXX = clang++
+CFLAGS = -Wall -g -c
+CXXFLAGS = -std=c++11 -Wall -g -c
+OFLAGS =  -pthread -O0
 OBJECTS =
-TARGETS = test.out test2.out test3.out test4.out
+TARGETS = test.out test2.out test3.out test4.out test5.out \
+	  test6.out test7.out
 
 all: ${TARGETS}
 
@@ -13,10 +15,10 @@ all: ${TARGETS}
 	${CC} ${CFLAGS} -o $@ $^
 
 %.o: %.cpp
-	${CPP} ${CFLAGS} -o $@ $^
+	${CXX} ${CXXFLAGS} -o $@ $^
 
 %.out: %.o
-	${CPP} ${OFLAGS} -o $@ $^
+	${CXX} ${OFLAGS} -o $@ $^
 
 clean:
 	rm -f *.o ${OBJECTS}
