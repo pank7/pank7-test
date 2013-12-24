@@ -30,9 +30,15 @@ public:
             std::cout << "[" << this << "|" << __LINE__ << "]: Destructor" << std::endl;
         }
     C &
-    operator=(C const &o)
+    operator=(C &o)
         {
-            std::cout << "[" << this << "|" << __LINE__ << "]: Operator =" << std::endl;
+            std::cout << "[" << this << "|" << __LINE__ << "]: Operator = &" << std::endl;
+            return *this;
+        }
+    C &
+    operator=(C &&o)
+        {
+            std::cout << "[" << this << "|" << __LINE__ << "]: Operator = &&" << std::endl;
             return *this;
         }
     void
@@ -54,10 +60,15 @@ main(int argc, char *argv[])
     auto        c1 = foobar1();
     auto        c2 = c1;
     auto        c3 = C(std::forward<C>(foobar1()));
+    auto        c4 = C(foobar1());
+
+    c4 = c3;
+    c4 = foobar1();
 
     c1.hoge();
     c2.hoge();
     c3.hoge();
+    c4.hoge();
 
     return 0;
 }
