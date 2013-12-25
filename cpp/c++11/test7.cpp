@@ -13,17 +13,18 @@
 class C
 {
 public:
-    C()
+    C() : value(7)
         {
             std::cout << "[" << this << "|" << __LINE__ << "]: Normal Constructor" << std::endl;
         }
-    C(C &o)
+    C(C &o) : value(o.value)
         {
             std::cout << "[" << this << "|" << __LINE__ << "]: Copy Constructor" << std::endl;
         }
-    C(C &&o)
+    C(C &&o) : value(o.value)
         {
             std::cout << "[" << this << "|" << __LINE__ << "]: Move Constructor" << std::endl;
+            o.value = 0;
         }
     ~C()
         {
@@ -44,12 +45,14 @@ public:
     void
     hoge()
         {
-            std::cout << "[" << this << "|" << __LINE__ << "]: hoge" << std::endl;
+            std::cout << "[" << this << "|" << __LINE__ << "]: " << this->value << std::endl;
         }
+private:
+    int         value;
 };
 
-C &&
-foobar1()
+C
+foobar()
 {
     return C();
 }
@@ -57,18 +60,20 @@ foobar1()
 int
 main(int argc, char *argv[])
 {
-    auto        c1 = foobar1();
-    auto        c2 = c1;
-    auto        c3 = C(std::forward<C>(foobar1()));
-    auto        c4 = C(foobar1());
+    auto        c1 = std::move(C());
+    auto        c2 = foobar();
+    auto        c3 = c1;
+    auto        c4 = C(std::forward<C>(foobar()));
+    auto        c5 = C(foobar());
 
-    c4 = c3;
-    c4 = foobar1();
+    c5 = c4;
+    c5 = foobar();
 
     c1.hoge();
     c2.hoge();
     c3.hoge();
     c4.hoge();
+    c5.hoge();
 
     return 0;
 }
