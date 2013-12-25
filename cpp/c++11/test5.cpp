@@ -21,6 +21,7 @@ template <class T>
 void
 foobar(T &&x)
 {
+    std::cout << "foobar(T &&x)";
     overloaded(x);                   // always an lvalue
     overloaded(std::forward<T>(x));  // rvalue if argument is rvalue
 }
@@ -32,8 +33,8 @@ main(int argc, char *argv[])
     stringmap b = {{"MSFT","Microsoft"}, {"GOOG","Google"}, {"AAPL","Apple"}};
     stringmap c = {{"MSFT","Microsoft Corp."}, {"GOOG","Google Inc."}, {"AAPL","Apple Inc."}};
 
-    if (a == b) std::cout << "a and b are equal\n";
-    if (b != c) std::cout << "b and c are not equal\n";
+    if (a == b) std::cout << "a and b are equal" << std::endl;
+    if (b != c) std::cout << "b and c are not equal" << std::endl;
 
     for (const auto &e : c) {
         std::cout << e.first << " = " << e.second << std::endl;
