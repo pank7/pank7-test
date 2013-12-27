@@ -7,7 +7,8 @@ CXXFLAGS = -std=c++11 -Wall -g -c
 OFLAGS =  -pthread -O0
 OBJECTS =
 TARGETS = test.out test2.out test3.out test4.out test5.out \
-	  test6.out test7.out test8.out test9.out test10.out
+	  test6.out test7.out test8.out test9.out test10.out \
+	  test11.out test12.out
 
 all: ${TARGETS}
 
