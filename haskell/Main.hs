@@ -2,6 +2,8 @@ module Main where
 
 import Text.Printf
 
+import Test
+
 data Season = Spring | Summer | Autumn | Winter
             deriving (Eq, Ord, Enum, Show, Read)
 
@@ -25,6 +27,7 @@ main = do putStrLn "What's your name?"
           printf "%f\n" $ area $ Circle 2.0
           printf "%s\n" $ show $ Spring
           printf "%d\n" $ num_of_leaves $ Gnode [Gnode [Leaf (-1), Gnode [Leaf (-2)], Leaf 0],  Leaf 1, Gnode [Leaf 2, Leaf 3], Leaf 4, Gnode [Leaf 5, Leaf 6, Gnode []]]
+          test
 
 lstlen :: [a] -> Int
 lstlen lst = lstlen' lst 0
