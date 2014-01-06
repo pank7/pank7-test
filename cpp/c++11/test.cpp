@@ -27,9 +27,7 @@ main(int argc, char *argv[])
     }
 
     std::uniform_int_distribution<int>  u(0, 1000);
-    std::default_random_engine  re(time(NULL));
-
-    u(re);
+    std::default_random_engine  re(seed);
 
     for (auto &e : a) {
         e = u(re);
