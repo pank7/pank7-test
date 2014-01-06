@@ -11,6 +11,8 @@
 #include        <valarray>
 #include        <cctype>
 
+#include        <openssl/md5.h>
+
 static std::size_t __string_to_uint(const std::string &k)
 {
     std::size_t         h = 0, i = 1;
@@ -85,8 +87,22 @@ struct shf4
         };
 };
 
+struct shf5
+{
+    std::size_t operator() (const std::string &k) const
+        {
+            unsigned char       *md5 = ::MD5(reinterpret_cast<const unsigned char *>(k.c_str()), k.length(), NULL);
+            std::size_t         h = 0;
+            unsigned char       *p = reinterpret_cast<unsigned char *>(&h);
+            for (int i = 0; i < 16; ++i) {
+                p[i % (sizeof(h))] ^= md5[i];
+            }
+            return h;
+        };
+};
+
 typedef std::unordered_map<std::string, int>            strdict;
-typedef std::unordered_map<std::string, int, shf1>      strdict2;
+typedef std::unordered_map<std::string, int, shf5>      strdict2;
 
 template <class T>
 void
@@ -133,8 +149,6 @@ main(int argc, char *argv[])
         std::cerr << "Can not open file!" << std::endl;
         return 1;
     }
-
-    print_strdict_details(d);
 
     std::cout << "now read file..." << std::endl;
     while (infile >> p >> u >> dsp >> win) {
