@@ -106,32 +106,31 @@ typedef std::unordered_map<std::string, int, shf5>      strdict2;
 
 template <class T>
 void
-print_strdict_details(const T &d)
-{
-    std::cout << "size: " << d.size() << std::endl;
-    // std::cout << "max_size: " << d.max_size() << std::endl;
-    std::cout << "bucket_count: " << d.bucket_count() << std::endl;
-    // std::cout << "max_bucket_count: " << d.max_bucket_count() << std::endl;
-    std::cout << "load_factor: " << d.load_factor() << std::endl;
-    // std::cout << "max_load_factor: " << d.max_load_factor() << std::endl;
-
-    return;
-}
-
-template <class T>
-void
 print_strdict_stat(const T &d)
 {
     std::unordered_map<std::size_t, unsigned int>       c;
-    strdict::size_type          b, bs;
+    strdict::size_type  b, bs;
+    double              nonempty_bucket = 0.0;
     for (const auto &kv : d) {
         b = d.bucket(kv.first);
         bs = d.bucket_size(b);
         if (c.count(bs) > 0) ++c[bs];
         else c[bs] = 1;
     }
-    for (const auto &kv : c)
-        std::cout << kv.first << " => " << kv.second / kv.first << std::endl;
+    std::cout << "bucket size distribution: " << std::endl;
+    for (const auto &kv : c) {
+        std::cout << " " << kv.first << " => " << kv.second / kv.first << std::endl;
+        nonempty_bucket += kv.second / kv.first;
+    }
+    std::cout << "size: " << d.size() << std::endl;
+    // std::cout << "max_size: " << d.max_size() << std::endl;
+    std::cout << "bucket_count: " << d.bucket_count() << std::endl;
+    // std::cout << "max_bucket_count: " << d.max_bucket_count() << std::endl;
+    std::cout << "load_factor: " << d.load_factor() << std::endl;
+    // std::cout << "max_load_factor: " << d.max_load_factor() << std::endl;
+    std::cout << "nonempty_bucket: " << nonempty_bucket << std::endl;
+    std::cout << "bucket_fill_rate: " << nonempty_bucket / d.bucket_count() << std::endl;
+    std::cout << "avg_bucket_size: " << d.size() / nonempty_bucket << std::endl;
 
     return;
 }
@@ -139,7 +138,6 @@ print_strdict_stat(const T &d)
 int
 main(int argc, char *argv[])
 {
-
     strdict             d;
     std::ifstream       infile("input.tsv");
     std::string         p, u, dsp;
@@ -154,21 +152,17 @@ main(int argc, char *argv[])
     while (infile >> p >> u >> dsp >> win) {
         d[p + "-" + u + "-" + dsp] = win;
     }
-    print_strdict_details(d);
     print_strdict_stat(d);
     std::cout << "now rehash..." << std::endl;
     d.rehash(d.size() * 3);
-    print_strdict_details(d);
     print_strdict_stat(d);
 
     std::cout << "now d2..." << std::endl;
     strdict2            d2;
     for (auto &kv : d) d2[kv.first] = kv.second;
-    print_strdict_details(d2);
     print_strdict_stat(d2);
     std::cout << "now rehash..." << std::endl;
     d2.rehash(d2.size() * 3);
-    print_strdict_details(d2);
     print_strdict_stat(d2);
 
     return 0;
