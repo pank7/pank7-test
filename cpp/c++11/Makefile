@@ -3,8 +3,8 @@
 CC = clang
 CXX = clang++
 CFLAGS = -Wall -g -c
-CXXFLAGS = -std=c++11 -Wall -g -c
-OFLAGS = -stdlib=libstdc++ -O0
+CXXFLAGS = -std=c++11 -stdlib=libc++ -Wall -g -c
+OFLAGS = -stdlib=libc++ -lc++abi -O0
 OBJECTS =
 TARGETS = test.out test2.out test3.out test4.out test5.out \
 	  test6.out test7.out test8.out test9.out test10.out \
