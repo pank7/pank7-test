@@ -24,7 +24,6 @@ struct pank7_server_settings
 #define TRUE    1
   short int             libevent_debug_mode;
   unsigned int          thread_num;
-  struct event_config   *config;
 };
 
 int
@@ -56,9 +55,6 @@ default_pank7_server_settings(struct pank7_server_settings *st)
 #endif /* _DEBUG */
   st->thread_num = nc;
 
-  st->config = event_config_new();
-  event_config_require_features(st->config, EV_FEATURE_ET | EV_FEATURE_O1 | EV_FEATURE_FDS);
-
   return;
 }
 
@@ -86,6 +82,27 @@ print_sys_info(int argc, char *argv[])
   long          nc = sysconf(_SC_NPROCESSORS_ONLN);
   fprintf(stdout, "Number of CPU core(s): %ld\n", nc);
   check_version_match();
+
+  struct event_base *base;
+  enum event_method_feature f;
+
+  base = event_base_new();
+  if (!base) {
+    puts("Couldn't get an event_base!");
+  } else {
+    printf("Using Libevent with backend method %s.",
+           event_base_get_method(base));
+    f = event_base_get_features(base);
+    if ((f & EV_FEATURE_ET))
+      printf("  Edge-triggered events are supported.");
+    if ((f & EV_FEATURE_O1))
+      printf("  O(1) event notification is supported.");
+    if ((f & EV_FEATURE_FDS))
+      printf("  All FD types are supported.");
+    puts("");
+  }
+  event_base_free(base);
+
   return;
 }
 
@@ -118,6 +135,10 @@ int
 pank7_server_init(struct pank7_server_settings *st)
 {
   if (st->libevent_debug_mode == TRUE) event_enable_debug_mode();
+
+  struct event_config   *config = event_config_new();
+  event_config_require_features(config, EV_FEATURE_ET | EV_FEATURE_O1 | EV_FEATURE_FDS);
+  event_config_free(config);
 
   return 0;
 }
