@@ -63,7 +63,7 @@ static void rd_done(io_context_t ctx, struct iocb *iocb, long res, long res2)
 
 void main(int args,void * argv[])
 {
-  int length = sizeof(“abcdefg”);
+  int length = sizeof("abcdefg");
   char * content = (char * )malloc(length);
   io_context_t myctx;
   int rc;
@@ -105,12 +105,12 @@ void main(int args,void * argv[])
   tmp = posix_memalign((void **)&buff, getpagesize(), AIO_BLKSIZE);
   if(tmp < 0)
     {
-      printf(“posix_memalign error\n”);
+      printf("posix_memalign error\n");
       exit(1);
     }
   if(NULL == io)
     {
-      printf( “io out of memeory\n”);
+      printf("io out of memeory\n");
       exit(1);
     }
 
