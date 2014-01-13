@@ -31,7 +31,7 @@ main(int argc, char *argv[], char *env[])
     for (const auto &e : va) std::cout << ' ' << e;
     std::cout << std::endl;
 
-    std::valarray<double>               vaa = va.cshift(1) * 10;
+    std::valarray<double>               vaa = va.cshift(1) * (double)10;
     std::cout << "vaa(" << vaa.size() << "):";
     for (const auto &e : vaa) std::cout << ' ' << e;
     std::cout << std::endl;
