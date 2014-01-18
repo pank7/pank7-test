@@ -1,5 +1,7 @@
-TARGETS 	= pank7-server rot13-select rot13-libevent rot13-libevent+
-OBJECTS		= pank7-server.o rot13-select.o rot13-libevent.o rot13-libevent+.o
+TARGETS 	= pank7-server rot13-select rot13-libevent rot13-libevent+ \
+		  test-libev
+OBJECTS		= pank7-server.o rot13-select.o rot13-libevent.o rot13-libevent+.o \
+		  test-libev.o
 
 CC		= clang
 #CFLAGS		= -Wall -O3 -g -c
@@ -17,6 +19,9 @@ clean:
 
 tags:
 	ctags -R
+
+test-libev: test-libev.o
+	${CC} ${OFLAGS} -lev $^ -o $@
 
 pank7-server: pank7-server.o
 	${CC} ${OFLAGS} -levent $^ -o $@

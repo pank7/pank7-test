@@ -1,5 +1,6 @@
 #include        <stdlib.h>
 #include        <unistd.h>
+#include        <signal.h>
 #include        <stdio.h>
 #include        <string.h>
 
@@ -257,9 +258,53 @@ pank7_listener_event_init(struct pank7_server_settings *st,
   return 0;
 }
 
+static void
+pank7_server_signal_handler(int sig)
+{
+}
+
+int
+pank7_server_signal_handler_regitster()
+{
+  if (signal(SIGTERM, pank7_server_signal_handler) == SIG_ERR){
+    /* error message */
+    perror("signal");
+    return 1;
+  }
+  if (signal(SIGQUIT, pank7_server_signal_handler) == SIG_ERR){
+    /* error message */
+    perror("signal");
+    return 1;
+  }
+  if (signal(SIGINT, pank7_server_signal_handler) == SIG_ERR){
+    /* error message */
+    perror("signal");
+    return 1;
+  }
+
+  return 0;
+}
+
+int
+pank7_server_atexit_handler_regitster()
+{
+  return 0;
+}
+
 int
 pank7_server_init(struct pank7_server_settings *st)
 {
+  /* signal handlers */
+  if (pank7_server_signal_handler_regitster() != 0) {
+    return 1;
+  }
+  
+  /* atexit handlers */
+  if (pank7_server_atexit_handler_regitster() != 0) {
+    return 1;
+  }
+  
+
   /* debug mode? */
   if (st->libevent_debug_mode == TRUE) event_enable_debug_mode();
 
@@ -301,7 +346,9 @@ main(int argc, char *argv[], char *env[])
     return 1;
   }
 
-  pank7_server_init(&st);
+  if (pank7_server_init(&st) != 0) {
+    return 1;
+  }
 
   pank7_server_run(&st);
           
