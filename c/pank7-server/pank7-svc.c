@@ -11,9 +11,8 @@
 #include        <sys/types.h>
 #include        <sys/stat.h>
 
-/* For sockaddr_in */
 #include        <netinet/in.h>
-/* For socket functions */
+#include        <netinet/tcp.h>
 #include        <sys/socket.h>
 
 #include        <ev.h>
@@ -28,6 +27,7 @@ struct pank7_svc_settings
   bool                  debug_mode;
   bool                  udp_listen_on;
   unsigned int          thread_num;
+  unsigned int          max_conns;
   char                  fifo_path[MEDIUM_STRING_LENGTH];
   struct ev_loop        *loop;
   int                   loop_flags;
@@ -108,6 +108,7 @@ parse_args(struct pank7_svc_settings *st, int argc, char *argv[])
                       "h"       /* print help information */
                       "i"       /* print system information */
                       "n:"      /* service name */
+                      "c:"      /* max connections */
                       "d"       /* daemon mode on */
                       "D"       /* debug mode on */
                       "P::"     /* add a periodic statistic watcher */
@@ -118,6 +119,7 @@ parse_args(struct pank7_svc_settings *st, int argc, char *argv[])
                       "e"       /* EVFLAG_NOENV for loop */
                       "o"       /* EVFLAG_NOINOTIFY for loop */
                       "s"       /* EVFLAG_SIGNALFD for loop */
+                      "k"       /* force KQUEUE for loop */
                       )) != -1) {
     switch (ch) {
     case 'h':
@@ -136,6 +138,9 @@ parse_args(struct pank7_svc_settings *st, int argc, char *argv[])
       break;
     case 'D': 
       st->debug_mode = true;
+      break;
+    case 'c':
+      st->max_conns = strtol(optarg, NULL, 10);
       break;
     case 'P':
       if (optarg != NULL) {
@@ -169,6 +174,9 @@ parse_args(struct pank7_svc_settings *st, int argc, char *argv[])
     case 's':
       st->loop_flags |= EVFLAG_SIGNALFD;
       break;
+    case 'k':
+      st->loop_flags |= EVBACKEND_KQUEUE;
+      break;
     default:
       return 1;
     }
@@ -200,9 +208,19 @@ setup_nonblocking_socket(int s)
 static void
 pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
 {
+  unsigned int          sb = ev_backend(EV_A);
+
   fprintf(stdout, "loop count: %d, ", ev_iteration(EV_A));
   fprintf(stdout, "event depth: %d, ", ev_depth(EV_A));
-  fprintf(stdout, "pending count: %d", ev_pending_count(EV_A));
+  fprintf(stdout, "pending count: %d, ", ev_pending_count(EV_A));
+
+  fprintf(stdout, "backend: ");
+  if (sb & EVBACKEND_SELECT) fprintf(stdout, "SELECT");
+  if (sb & EVBACKEND_POLL) fprintf(stdout, "POLL");
+  if (sb & EVBACKEND_EPOLL) fprintf(stdout, "EPOLL");
+  if (sb & EVBACKEND_KQUEUE) fprintf(stdout, "KQUEUE");
+  if (sb & EVBACKEND_DEVPOLL) fprintf(stdout, "DEVPOLL");
+  if (sb & EVBACKEND_PORT) fprintf(stdout, "PORT");
   fprintf(stdout, "\n");
 }
 
@@ -211,7 +229,7 @@ pank7_svc_exit_callback()
 {
 }
 
-#define DEFAULT_SENT_DATA \
+#define DEFAULT_SEND_DATA \
   "HTTP/1.1 200 OK\r\n" \
   "Connection: close\r\n" \
   "Content-Type: text/html; charset=UTF-8\r\n" \
@@ -225,7 +243,7 @@ pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
   struct pank7_svc_settings     *st;
   ssize_t                       ret;
   st = (struct pank7_svc_settings *)ev_userdata(EV_A);
-  char                          send_data[] = DEFAULT_SENT_DATA;
+  char                          send_data[] = DEFAULT_SEND_DATA;
   char                          *ptr = send_data;
   size_t                        len = strlen(send_data);
 
@@ -255,12 +273,15 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
   struct pank7_svc_settings     *st;
   char                          buf[MEDIUM_STRING_LENGTH];
   ssize_t                       ret;
+  socklen_t                     slen = 0;
 
   st = (struct pank7_svc_settings *)ev_userdata(EV_A);
 
   buf[MEDIUM_STRING_LENGTH - 1] = '\0';
   while (true) {
     ret = recv(w->fd, buf, MEDIUM_STRING_LENGTH - 1, 0);
+    // ret = read(w->fd, buf, MEDIUM_STRING_LENGTH - 1);
+    // ret = recvfrom(w->fd, buf, MEDIUM_STRING_LENGTH - 1, 0, NULL, &slen);
     if (ret <= 0) break;
     buf[ret] = '\0';
     if (st->debug_mode == true)
@@ -270,6 +291,7 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
   if (ret == 0) {
     if (st->debug_mode == true)
       fprintf(stderr, "connection(%d) closed by peer\n", w->fd);
+    close(w->fd);
   } else if (ret < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       struct ev_io              *watcher = NULL;
@@ -345,8 +367,15 @@ pank7_listener_event_init(struct pank7_svc_settings *st)
   }
 
   int           flags = -1;
+  struct linger ling = {0, 0};
 
   setsockopt(st->listen_socket, SOL_SOCKET, SO_REUSEADDR,
+             (void *)&flags, sizeof(flags));
+  setsockopt(st->listen_socket, SOL_SOCKET, SO_KEEPALIVE,
+             (void *)&flags, sizeof(flags));
+  setsockopt(st->listen_socket, SOL_SOCKET, SO_LINGER,
+             (void *)&ling, sizeof(ling));
+  setsockopt(st->listen_socket, IPPROTO_TCP, TCP_NODELAY,
              (void *)&flags, sizeof(flags));
 
   struct sockaddr_in    sin;
@@ -421,10 +450,42 @@ pank7_svc_atexit_handler_register()
 }
 
 int
+pank7_svc_set_limits(struct pank7_svc_settings *st)
+{
+  struct rlimit rlim;
+  /*
+   * If needed, increase rlimits to allow as many connections
+   * as needed.
+   */
+  if (getrlimit(RLIMIT_NOFILE, &rlim) != 0) {
+    fprintf(stderr, "failed to getrlimit number of files\n");
+    perror("getrlimit");
+    return 1;
+  } else {
+    int maxfiles = st->max_conns;
+    if (rlim.rlim_cur < maxfiles)
+      rlim.rlim_cur = maxfiles + 3;
+    if (rlim.rlim_max < rlim.rlim_cur)
+      rlim.rlim_max = rlim.rlim_cur;
+    if (setrlimit(RLIMIT_NOFILE, &rlim) != 0) {
+      fprintf(stderr, "failed to set rlimit for open files. Try running as root or requesting smaller maxconns value.\n");
+      perror("setrlimit");
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+int
 pank7_svc_init(struct pank7_svc_settings *st)
 {
   /* atexit handlers */
   if (pank7_svc_atexit_handler_register() != 0) {
+    return 1;
+  }
+  /* set limits */
+  if (pank7_svc_set_limits(st) != 0) {
     return 1;
   }
 
