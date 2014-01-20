@@ -15,18 +15,11 @@
 #include        <netinet/in.h>
 /* For socket functions */
 #include        <sys/socket.h>
-#include        <netdb.h>
 
 #include        <ev.h>
 
 #define SHORT_STRING_LENGTH     256
 #define MEDIUM_STRING_LENGTH    1024
-
-struct pank7_connection
-{
-  int                   fd;
-  ev_io                 watcher;
-};
 
 struct pank7_server_settings
 {
@@ -37,6 +30,7 @@ struct pank7_server_settings
   unsigned int          thread_num;
   char                  fifo_path[MEDIUM_STRING_LENGTH];
   struct ev_loop        *loop;
+  int                   loop_flags;
   char                  listen_host[SHORT_STRING_LENGTH];
   in_port_t             listen_port;
   int                   listen_socket;
@@ -46,10 +40,7 @@ struct pank7_server_settings
   ev_signal             sigterm_watcher;
   ev_signal             sigquit_watcher;
   ev_signal             sigint_watcher;
-  
 };
-
-static struct pank7_server_settings     settings;
 
 void
 default_pank7_server_settings(struct pank7_server_settings *st)
@@ -58,6 +49,7 @@ default_pank7_server_settings(struct pank7_server_settings *st)
   long          nc = sysconf(_SC_NPROCESSORS_ONLN);
 
   strcpy(st->name, default_name);
+  st->daemon_mode = false;
 #ifdef _DEBUG
   st->debug_mode = true;
 #else  /* _DEBUG */
@@ -65,9 +57,11 @@ default_pank7_server_settings(struct pank7_server_settings *st)
 #endif /* _DEBUG */
   st->thread_num = nc;
   st->fifo_path[0] = '\0';
+  st->loop = NULL;
+  st->loop_flags = 0;
   strcpy(st->listen_host, "localhost");
   st->listen_port = 7777;
-  st->loop = NULL;
+  st->period = 0.0;
 
   return;
 }
@@ -90,10 +84,16 @@ print_sys_info(int argc, char *argv[])
 
   fprintf(stdout, "default backend(%08X): ", sb);
   if (sb & EVBACKEND_SELECT) fprintf(stdout, "SELECT");
+  if (sb & EVBACKEND_POLL) fprintf(stdout, "POLL");
   if (sb & EVBACKEND_EPOLL) fprintf(stdout, "EPOLL");
   if (sb & EVBACKEND_KQUEUE) fprintf(stdout, "KQUEUE");
-  if (sb & EVBACKEND_POLL) fprintf(stdout, "POLL");
+  if (sb & EVBACKEND_DEVPOLL) fprintf(stdout, "DEVPOLL");
+  if (sb & EVBACKEND_PORT) fprintf(stdout, "PORT");
   fprintf(stdout, "\n");
+
+  ev_verify(loop);
+
+  ev_loop_destroy(loop);
 
   return;
 }
@@ -109,10 +109,13 @@ parse_args(struct pank7_server_settings *st, int argc, char *argv[])
                       "n:"      /* service name */
                       "d"       /* daemon mode on */
                       "D"       /* debug mode on */
+                      "P::"     /* add a periodic statistic watcher */
                       "I:"      /* fifo path on */
-                      "H::"     /* host to listen */
-                      "p::"     /* port to listen */
+                      "H:"      /* host to listen */
+                      "p:"      /* port to listen */
                       "u"       /* udp listen on */
+                      "e"       /* EVFLAG_NOENV for loop */
+                      "o"       /* EVFLAG_NOINOTIFY for loop */
                       )) != -1) {
     switch (ch) {
     case 'h':
@@ -129,8 +132,17 @@ parse_args(struct pank7_server_settings *st, int argc, char *argv[])
     case 'd':
       st->daemon_mode = true;
       break;
-    case 'D':
-      st->debug_mode = true;
+    case 'D': 
+     st->debug_mode = true;
+      break;
+    case 'P':
+      if (optarg != NULL) {
+        ev_tstamp       period = strtod(optarg, NULL);
+        st->period = period;
+      } else {
+        st->period = 10.0;
+      }
+      fprintf(stdout, "will add a period(%.2fs) event\n", st->period);
       break;
     case 'H':
       strncpy(st->listen_host, optarg, SHORT_STRING_LENGTH - 1);
@@ -146,83 +158,18 @@ parse_args(struct pank7_server_settings *st, int argc, char *argv[])
       break;
     case 'u':
       break;
+    case 'e':
+      st->loop_flags |= EVFLAG_NOENV;
+      break;
+    case 'o':
+      st->loop_flags |= EVFLAG_NOINOTIFY;
+      break;
     default:
       return 1;
     }
   }
 
   return 0;
-}
-
-static void
-period_callback(EV_P_ ev_periodic *w, int revents)
-{
-  fprintf(stdout, "loop count: %d ", ev_iteration(EV_A));
-  fprintf(stdout, "event depth: %d ", ev_depth(EV_A));
-  fprintf(stdout, "pending count: %d", ev_pending_count(EV_A));
-  fprintf(stdout, "\n");
-}
-
-void
-pank7_server_exit_callback()
-{
-}
-
-void
-pank7_server_error_callback()
-{
-}
-
-void
-pank7_server_read_callback(EV_P_ ev_io *w, int revents)
-{
-  char          buf[MEDIUM_STRING_LENGTH];
-  ssize_t       ret;
-
-  buf[MEDIUM_STRING_LENGTH - 1] = '\0';
-  while (true) {
-    ret = recv(w->fd, buf, MEDIUM_STRING_LENGTH - 1, 0);
-    if (ret <= 0) break;
-    buf[ret] = '\0';
-    fprintf(stdout, "recv(%ld): %s", ret, buf);
-  }
-
-  if (ret == 0) {
-    ev_io_stop(EV_A_ w);
-    free(w);
-  } else if (ret < 0) {
-    if (errno == EAGAIN) // XXXX use evutil macro
-      return;
-    perror("recv");
-    ev_io_stop(EV_A_ w);
-  }
-}
-
-void
-pank7_server_accept_callback(EV_P_ ev_io *w, int revents)
-{
-  fprintf(stdout, "incoming!\n");
-
-  struct sockaddr_storage       ss;
-  socklen_t                     slen = sizeof(ss);
-  int                           infd;
-
-  infd = accept(w->fd, (struct sockaddr *)&ss, &slen);
-  if (infd < 0) {
-    /* error message */
-    perror("accept");
-  } else if (infd > FD_SETSIZE) {
-    perror("FD_SETSIZE");
-    close(infd);
-  } else {
-    struct ev_io                *watcher = NULL;
-    watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
-    ev_io_init(watcher, pank7_server_read_callback,
-               infd, EV_READ);
-    ev_io_start(EV_A_ watcher);
-  }
-
-  return;
 }
 
 static int
@@ -245,13 +192,133 @@ setup_nonblocking_socket(int s)
   return 0;
 }
 
+static void
+period_callback(EV_P_ ev_periodic *w, int revents)
+{
+  fprintf(stdout, "loop count: %d, ", ev_iteration(EV_A));
+  fprintf(stdout, "event depth: %d, ", ev_depth(EV_A));
+  fprintf(stdout, "pending count: %d", ev_pending_count(EV_A));
+  fprintf(stdout, "\n");
+}
+
+void
+pank7_server_exit_callback()
+{
+}
+
+#define DEFAULT_SENT_DATA \
+  "HTTP/1.1 200 OK\r\n" \
+  "Content-Type: text/html; charset=UTF-8\r\n" \
+  "Content-Length: 82\r\n" \
+  "\r\n" \
+  "<html><head><title>pank7-svc</title></head><body><h1>pank7-svc</h1></body></html>\n"
+
+void
+pank7_server_write_callback(EV_P_ ev_io *w, int revents)
+{
+  struct pank7_server_settings  *st;
+  ssize_t                       ret;
+  st = (struct pank7_server_settings *)ev_userdata(EV_A);
+  char                          send_data[] = DEFAULT_SENT_DATA;
+  char                          *ptr = send_data;
+  size_t                        len = strlen(send_data);
+
+  while (true) {
+    ret = send(w->fd, ptr, len, 0);
+    if (ret < 0) break;
+    if (st->debug_mode == true)
+      fprintf(stderr, "send(%d:%ld)\n", w->fd, ret);
+    if (ret == len) break;
+    ptr += ret;
+    len -= ret;
+  }
+
+  if (ret < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return;
+    /* error message */
+    perror("send");
+  }
+  close(w->fd);
+  ev_io_stop(EV_A_ w);
+  free(w);
+}
+
+void
+pank7_server_read_callback(EV_P_ ev_io *w, int revents)
+{
+  struct pank7_server_settings  *st;
+  char                          buf[MEDIUM_STRING_LENGTH];
+  ssize_t                       ret;
+
+  st = (struct pank7_server_settings *)ev_userdata(EV_A);
+
+  buf[MEDIUM_STRING_LENGTH - 1] = '\0';
+  while (true) {
+    ret = recv(w->fd, buf, MEDIUM_STRING_LENGTH - 1, 0);
+    if (ret <= 0) break;
+    buf[ret] = '\0';
+    if (st->debug_mode == true)
+      fprintf(stderr, "recv(%d:%ld): %s", w->fd, ret, buf);
+  }
+
+  if (ret == 0) {
+    if (st->debug_mode == true)
+      fprintf(stderr, "connection(%d) closed by peer\n", w->fd);
+  } else if (ret < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      struct ev_io              *watcher = NULL;
+      watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
+      ev_io_init(watcher, pank7_server_write_callback,
+                 w->fd, EV_WRITE);
+      ev_io_start(EV_A_ watcher);
+    } else {
+      if (st->debug_mode == true)
+        fprintf(stderr, "(%d)", w->fd);
+      perror("recv");
+    }
+  }
+  ev_io_stop(EV_A_ w);
+  free(w);
+}
+
+void
+pank7_server_accept_callback(EV_P_ ev_io *w, int revents)
+{
+  struct pank7_server_settings  *st;
+  st = (struct pank7_server_settings *)ev_userdata(EV_A);
+
+  struct sockaddr_storage       ss;
+  socklen_t                     slen = sizeof(ss);
+  int                           infd;
+
+  infd = accept(w->fd, (struct sockaddr *)&ss, &slen);
+  if (infd < 0) {
+    /* error message */
+    perror("accept");
+  } else if (infd > FD_SETSIZE) {
+    perror("FD_SETSIZE");
+    close(infd);
+  } else {
+    struct ev_io                *watcher = NULL;
+    watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
+    setup_nonblocking_socket(infd);
+    ev_io_init(watcher, pank7_server_read_callback,
+               infd, EV_READ);
+    ev_io_start(EV_A_ watcher);
+  }
+
+  if (st->debug_mode == true)
+    fprintf(stderr, "incoming connection(%d)\n", infd);
+
+  return;
+}
+
 static int
 new_tcp_socket(const char *host)
 {
   int                   s;
-  struct protoent       *proto = getprotobyname("ip");
 
-  if ((s = socket(PF_INET, SOCK_STREAM, proto->p_proto)) == -1) {
+  if ((s = socket(PF_INET, SOCK_STREAM, 0)) == -1) {
     /* error message */
     perror("socket");
     return -1;
@@ -296,32 +363,52 @@ pank7_listener_event_init(struct pank7_server_settings *st)
 }
 
 static void
-signal_callback(EV_P_ ev_signal *w, int revents)
+pank7_server_close_io_callback(EV_P_ int type, void *w) __attribute__((unused));
+static void
+pank7_server_close_io_callback(EV_P_ int type, void *w)
 {
-  fprintf(stdout, "signal caught: %d\n", w->signum);
+}
 
-  ev_break(settings.loop, EVBREAK_ONE);
+static void
+pank7_server_signal_callback(EV_P_ ev_signal *w, int revents)
+{
+  struct pank7_server_settings  *st;
+  st = (struct pank7_server_settings *)ev_userdata(EV_A);
+
+  if (st->debug_mode)
+    fprintf(stderr, "signal(%d) caught, quit\n", w->signum);
+
+  ev_io_stop(EV_A_ &st->listen_watcher);
+  ev_signal_stop(EV_A_ &st->sigterm_watcher);
+  ev_signal_stop(EV_A_ &st->sigquit_watcher);
+  ev_signal_stop(EV_A_ &st->sigint_watcher);
+
+  if (st->period > 0.0) {
+    ev_periodic_stop(EV_A_ &st->period_watcher);
+  }
+
+  ev_break(EV_A_ EVBREAK_ONE);
 
   return;
 }
 
 int
-pank7_server_signal_handler_regitster(struct pank7_server_settings *st)
+pank7_server_signal_handler_register(struct pank7_server_settings *st)
 {
-  ev_signal_init(&st->sigterm_watcher, signal_callback, SIGTERM);
+  ev_signal_init(&st->sigterm_watcher, pank7_server_signal_callback, SIGTERM);
   ev_signal_start(st->loop, &st->sigterm_watcher);
 
-  ev_signal_init(&st->sigquit_watcher, signal_callback, SIGQUIT);
+  ev_signal_init(&st->sigquit_watcher, pank7_server_signal_callback, SIGQUIT);
   ev_signal_start(st->loop, &st->sigquit_watcher);
 
-  ev_signal_init(&st->sigint_watcher, signal_callback, SIGINT);
+  ev_signal_init(&st->sigint_watcher, pank7_server_signal_callback, SIGINT);
   ev_signal_start(st->loop, &st->sigint_watcher);
 
   return 0;
 }
 
 int
-pank7_server_atexit_handler_regitster()
+pank7_server_atexit_handler_register()
 {
   return 0;
 }
@@ -331,21 +418,13 @@ pank7_server_init(struct pank7_server_settings *st)
 {
   
   /* atexit handlers */
-  if (pank7_server_atexit_handler_regitster() != 0) {
+  if (pank7_server_atexit_handler_register() != 0) {
     return 1;
   }
 
   /* get the default event loop from libev */
-  // st->loop = EV_DEFAULT;
-  st->loop = ev_default_loop(EVBACKEND_KQUEUE);
-
-  /* signal handlers */
-  if (pank7_server_signal_handler_regitster(st) != 0) {
-    return 1;
-  }
-  
-  /* debug mode? */
-  if (st->debug_mode == true) {};
+  st->loop = ev_default_loop(st->loop_flags);
+  ev_set_userdata(st->loop, (void *)st);
 
   if (pank7_listener_event_init(st) != 0) {
     /* error message here */
@@ -356,8 +435,16 @@ pank7_server_init(struct pank7_server_settings *st)
              st->listen_socket, EV_READ);
   ev_io_start(st->loop, &st->listen_watcher);
 
-  ev_periodic_init(&st->period_watcher, period_callback, 0.0, 2.5, NULL);
-  ev_periodic_start(st->loop, &st->period_watcher);
+  if (st->period > 0.0) {
+    ev_periodic_init(&st->period_watcher, period_callback, 0.0,
+                     st->period, NULL);
+    ev_periodic_start(st->loop, &st->period_watcher);
+  }
+
+  /* signal handlers */
+  if (pank7_server_signal_handler_register(st) != 0) {
+    return 1;
+  }
   
   return 0;
 }
@@ -367,12 +454,16 @@ pank7_server_run(struct pank7_server_settings *st)
 {
   ev_run(st->loop, 0);
 
+  ev_loop_destroy(st->loop);
+
   return;
 }
 
 int
 main(int argc, char *argv[], char *env[])
 {
+  struct pank7_server_settings  settings;
+
   default_pank7_server_settings(&settings);
 
   if (parse_args(&settings, argc, argv) != 0) {
