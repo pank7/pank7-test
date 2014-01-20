@@ -21,7 +21,7 @@
 #define SHORT_STRING_LENGTH     256
 #define MEDIUM_STRING_LENGTH    1024
 
-struct pank7_server_settings
+struct pank7_svc_settings
 {
   char                  name[SHORT_STRING_LENGTH];
   bool                  daemon_mode;
@@ -43,9 +43,9 @@ struct pank7_server_settings
 };
 
 void
-default_pank7_server_settings(struct pank7_server_settings *st)
+default_pank7_svc_settings(struct pank7_svc_settings *st)
 {
-  char          default_name[] = "pank7-server";
+  char          default_name[] = "pank7-svc";
   long          nc = sysconf(_SC_NPROCESSORS_ONLN);
 
   strcpy(st->name, default_name);
@@ -77,11 +77,12 @@ print_help(int argc, char *argv[])
 }
 
 void
-print_sys_info(int argc, char *argv[])
+print_sys_info(int argc, char *argv[], struct pank7_svc_settings *st)
 {
   struct ev_loop        *loop = EV_DEFAULT;
   unsigned int          sb = ev_backend(loop);
 
+  fprintf(stdout, "name: %s\n", st->name);
   fprintf(stdout, "default backend(%08X): ", sb);
   if (sb & EVBACKEND_SELECT) fprintf(stdout, "SELECT");
   if (sb & EVBACKEND_POLL) fprintf(stdout, "POLL");
@@ -99,7 +100,7 @@ print_sys_info(int argc, char *argv[])
 }
 
 int
-parse_args(struct pank7_server_settings *st, int argc, char *argv[])
+parse_args(struct pank7_svc_settings *st, int argc, char *argv[])
 {
   int           ch;
 
@@ -124,7 +125,7 @@ parse_args(struct pank7_server_settings *st, int argc, char *argv[])
       exit(0);
       break;
     case 'i':
-      print_sys_info(argc, argv);
+      print_sys_info(argc, argv, st);
       exit(0);
       break;
     case 'n':
@@ -197,7 +198,7 @@ setup_nonblocking_socket(int s)
 }
 
 static void
-pank7_server_period_callback(EV_P_ ev_periodic *w, int revents)
+pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
 {
   fprintf(stdout, "loop count: %d, ", ev_iteration(EV_A));
   fprintf(stdout, "event depth: %d, ", ev_depth(EV_A));
@@ -206,7 +207,7 @@ pank7_server_period_callback(EV_P_ ev_periodic *w, int revents)
 }
 
 void
-pank7_server_exit_callback()
+pank7_svc_exit_callback()
 {
 }
 
@@ -219,11 +220,11 @@ pank7_server_exit_callback()
   "<html><head><title>pank7-svc</title></head><body><h1>pank7-svc</h1></body></html>\n"
 
 void
-pank7_server_write_callback(EV_P_ ev_io *w, int revents)
+pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_server_settings  *st;
+  struct pank7_svc_settings     *st;
   ssize_t                       ret;
-  st = (struct pank7_server_settings *)ev_userdata(EV_A);
+  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
   char                          send_data[] = DEFAULT_SENT_DATA;
   char                          *ptr = send_data;
   size_t                        len = strlen(send_data);
@@ -249,13 +250,13 @@ pank7_server_write_callback(EV_P_ ev_io *w, int revents)
 }
 
 void
-pank7_server_read_callback(EV_P_ ev_io *w, int revents)
+pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_server_settings  *st;
+  struct pank7_svc_settings     *st;
   char                          buf[MEDIUM_STRING_LENGTH];
   ssize_t                       ret;
 
-  st = (struct pank7_server_settings *)ev_userdata(EV_A);
+  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
 
   buf[MEDIUM_STRING_LENGTH - 1] = '\0';
   while (true) {
@@ -273,7 +274,7 @@ pank7_server_read_callback(EV_P_ ev_io *w, int revents)
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       struct ev_io              *watcher = NULL;
       watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
-      ev_io_init(watcher, pank7_server_write_callback,
+      ev_io_init(watcher, pank7_svc_write_callback,
                  w->fd, EV_WRITE);
       ev_io_start(EV_A_ watcher);
     } else {
@@ -288,10 +289,10 @@ pank7_server_read_callback(EV_P_ ev_io *w, int revents)
 }
 
 void
-pank7_server_accept_callback(EV_P_ ev_io *w, int revents)
+pank7_svc_accept_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_server_settings  *st;
-  st = (struct pank7_server_settings *)ev_userdata(EV_A);
+  struct pank7_svc_settings     *st;
+  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
 
   struct sockaddr_storage       ss;
   socklen_t                     slen = sizeof(ss);
@@ -308,7 +309,7 @@ pank7_server_accept_callback(EV_P_ ev_io *w, int revents)
     struct ev_io                *watcher = NULL;
     watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
     setup_nonblocking_socket(infd);
-    ev_io_init(watcher, pank7_server_read_callback,
+    ev_io_init(watcher, pank7_svc_read_callback,
                infd, EV_READ);
     ev_io_start(EV_A_ watcher);
   }
@@ -336,7 +337,7 @@ new_tcp_socket(const char *host)
 }
 
 int
-pank7_listener_event_init(struct pank7_server_settings *st)
+pank7_listener_event_init(struct pank7_svc_settings *st)
 {
   st->listen_socket = new_tcp_socket(st->listen_host);
   if (st->listen_socket == -1) {
@@ -369,17 +370,17 @@ pank7_listener_event_init(struct pank7_server_settings *st)
 }
 
 static void
-pank7_server_close_io_callback(EV_P_ int type, void *w) __attribute__((unused));
+pank7_svc_close_io_callback(EV_P_ int type, void *w) __attribute__((unused));
 static void
-pank7_server_close_io_callback(EV_P_ int type, void *w)
+pank7_svc_close_io_callback(EV_P_ int type, void *w)
 {
 }
 
 static void
-pank7_server_signal_callback(EV_P_ ev_signal *w, int revents)
+pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
 {
-  struct pank7_server_settings  *st;
-  st = (struct pank7_server_settings *)ev_userdata(EV_A);
+  struct pank7_svc_settings     *st;
+  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
 
   if (st->debug_mode)
     fprintf(stderr, "signal(%d) caught, quit\n", w->signum);
@@ -399,31 +400,31 @@ pank7_server_signal_callback(EV_P_ ev_signal *w, int revents)
 }
 
 int
-pank7_server_signal_handler_register(struct pank7_server_settings *st)
+pank7_svc_signal_handler_register(struct pank7_svc_settings *st)
 {
-  ev_signal_init(&st->sigterm_watcher, pank7_server_signal_callback, SIGTERM);
+  ev_signal_init(&st->sigterm_watcher, pank7_svc_signal_callback, SIGTERM);
   ev_signal_start(st->loop, &st->sigterm_watcher);
 
-  ev_signal_init(&st->sigquit_watcher, pank7_server_signal_callback, SIGQUIT);
+  ev_signal_init(&st->sigquit_watcher, pank7_svc_signal_callback, SIGQUIT);
   ev_signal_start(st->loop, &st->sigquit_watcher);
 
-  ev_signal_init(&st->sigint_watcher, pank7_server_signal_callback, SIGINT);
+  ev_signal_init(&st->sigint_watcher, pank7_svc_signal_callback, SIGINT);
   ev_signal_start(st->loop, &st->sigint_watcher);
 
   return 0;
 }
 
 int
-pank7_server_atexit_handler_register()
+pank7_svc_atexit_handler_register()
 {
   return 0;
 }
 
 int
-pank7_server_init(struct pank7_server_settings *st)
+pank7_svc_init(struct pank7_svc_settings *st)
 {
   /* atexit handlers */
-  if (pank7_server_atexit_handler_register() != 0) {
+  if (pank7_svc_atexit_handler_register() != 0) {
     return 1;
   }
 
@@ -436,18 +437,18 @@ pank7_server_init(struct pank7_server_settings *st)
     return 1;
   }
 
-  ev_io_init(&st->listen_watcher, pank7_server_accept_callback,
+  ev_io_init(&st->listen_watcher, pank7_svc_accept_callback,
              st->listen_socket, EV_READ);
   ev_io_start(st->loop, &st->listen_watcher);
 
   if (st->period > 0.0) {
-    ev_periodic_init(&st->period_watcher, pank7_server_period_callback,
+    ev_periodic_init(&st->period_watcher, pank7_svc_period_callback,
                      0.0, st->period, NULL);
     ev_periodic_start(st->loop, &st->period_watcher);
   }
 
   /* signal handlers */
-  if (pank7_server_signal_handler_register(st) != 0) {
+  if (pank7_svc_signal_handler_register(st) != 0) {
     return 1;
   }
   
@@ -455,7 +456,7 @@ pank7_server_init(struct pank7_server_settings *st)
 }
 
 void
-pank7_server_run(struct pank7_server_settings *st)
+pank7_svc_run(struct pank7_svc_settings *st)
 {
   ev_run(st->loop, 0);
 
@@ -467,20 +468,20 @@ pank7_server_run(struct pank7_server_settings *st)
 int
 main(int argc, char *argv[], char *env[])
 {
-  struct pank7_server_settings  settings;
+  struct pank7_svc_settings     settings;
 
-  default_pank7_server_settings(&settings);
+  default_pank7_svc_settings(&settings);
 
   if (parse_args(&settings, argc, argv) != 0) {
     print_help(argc, argv);
     return 1;
   }
 
-  if (pank7_server_init(&settings) != 0) {
+  if (pank7_svc_init(&settings) != 0) {
     return 1;
   }
 
-  pank7_server_run(&settings);
+  pank7_svc_run(&settings);
           
   return 0;
 }
