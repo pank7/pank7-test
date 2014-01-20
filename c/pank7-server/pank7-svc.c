@@ -40,6 +40,7 @@ struct pank7_svc_settings
   ev_signal             sigterm_watcher;
   ev_signal             sigquit_watcher;
   ev_signal             sigint_watcher;
+  size_t                current_conns;
 };
 
 void
@@ -62,6 +63,7 @@ default_pank7_svc_settings(struct pank7_svc_settings *st)
   strcpy(st->listen_host, "localhost");
   st->listen_port = 7777;
   st->period = 0.0;
+  st->current_conns = 0;
 
   return;
 }
@@ -208,7 +210,10 @@ setup_nonblocking_socket(int s)
 static void
 pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
 {
-  unsigned int          sb = ev_backend(EV_A);
+  struct pank7_svc_settings     *st;
+  unsigned int                  sb = ev_backend(EV_A);
+
+  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
 
   fprintf(stdout, "loop count: %d, ", ev_iteration(EV_A));
   fprintf(stdout, "event depth: %d, ", ev_depth(EV_A));
@@ -221,6 +226,9 @@ pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
   if (sb & EVBACKEND_KQUEUE) fprintf(stdout, "KQUEUE");
   if (sb & EVBACKEND_DEVPOLL) fprintf(stdout, "DEVPOLL");
   if (sb & EVBACKEND_PORT) fprintf(stdout, "PORT");
+  fprintf(stdout, ", ");
+
+  fprintf(stdout, "current cons: %lu", st->current_conns);
   fprintf(stdout, "\n");
 }
 
@@ -263,6 +271,7 @@ pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
     perror("send");
   }
   close(w->fd);
+  --st->current_conns;
   ev_io_stop(EV_A_ w);
   free(w);
 }
@@ -273,7 +282,7 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
   struct pank7_svc_settings     *st;
   char                          buf[MEDIUM_STRING_LENGTH];
   ssize_t                       ret;
-  socklen_t                     slen = 0;
+  // socklen_t                     slen = 0;
 
   st = (struct pank7_svc_settings *)ev_userdata(EV_A);
 
@@ -292,6 +301,7 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
     if (st->debug_mode == true)
       fprintf(stderr, "connection(%d) closed by peer\n", w->fd);
     close(w->fd);
+    --st->current_conns;
   } else if (ret < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       struct ev_io              *watcher = NULL;
@@ -304,6 +314,7 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
         fprintf(stderr, "(%d)", w->fd);
       perror("recv");
       close(w->fd);
+      --st->current_conns;
     }
   }
   ev_io_stop(EV_A_ w);
@@ -334,6 +345,7 @@ pank7_svc_accept_callback(EV_P_ ev_io *w, int revents)
     ev_io_init(watcher, pank7_svc_read_callback,
                infd, EV_READ);
     ev_io_start(EV_A_ watcher);
+    ++st->current_conns;
   }
 
   if (st->debug_mode == true)
