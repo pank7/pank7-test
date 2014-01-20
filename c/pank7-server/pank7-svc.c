@@ -393,7 +393,7 @@ pank7_server_signal_callback(EV_P_ ev_signal *w, int revents)
     ev_periodic_stop(EV_A_ &st->period_watcher);
   }
 
-  ev_break(EV_A_ EVBREAK_ONE);
+  ev_break(EV_A_ EVBREAK_ALL);
 
   return;
 }
