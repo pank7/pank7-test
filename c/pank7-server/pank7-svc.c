@@ -116,6 +116,7 @@ parse_args(struct pank7_server_settings *st, int argc, char *argv[])
                       "u"       /* udp listen on */
                       "e"       /* EVFLAG_NOENV for loop */
                       "o"       /* EVFLAG_NOINOTIFY for loop */
+                      "s"       /* EVFLAG_SIGNALFD for loop */
                       )) != -1) {
     switch (ch) {
     case 'h':
@@ -163,6 +164,9 @@ parse_args(struct pank7_server_settings *st, int argc, char *argv[])
       break;
     case 'o':
       st->loop_flags |= EVFLAG_NOINOTIFY;
+      break;
+    case 's':
+      st->loop_flags |= EVFLAG_SIGNALFD;
       break;
     default:
       return 1;
