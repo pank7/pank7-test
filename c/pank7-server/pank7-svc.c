@@ -197,7 +197,7 @@ setup_nonblocking_socket(int s)
 }
 
 static void
-period_callback(EV_P_ ev_periodic *w, int revents)
+pank7_server_period_callback(EV_P_ ev_periodic *w, int revents)
 {
   fprintf(stdout, "loop count: %d, ", ev_iteration(EV_A));
   fprintf(stdout, "event depth: %d, ", ev_depth(EV_A));
@@ -441,8 +441,8 @@ pank7_server_init(struct pank7_server_settings *st)
   ev_io_start(st->loop, &st->listen_watcher);
 
   if (st->period > 0.0) {
-    ev_periodic_init(&st->period_watcher, period_callback, 0.0,
-                     st->period, NULL);
+    ev_periodic_init(&st->period_watcher, pank7_server_period_callback,
+                     0.0, st->period, NULL);
     ev_periodic_start(st->loop, &st->period_watcher);
   }
 
