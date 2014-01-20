@@ -133,7 +133,7 @@ parse_args(struct pank7_server_settings *st, int argc, char *argv[])
       st->daemon_mode = true;
       break;
     case 'D': 
-     st->debug_mode = true;
+      st->debug_mode = true;
       break;
     case 'P':
       if (optarg != NULL) {
@@ -208,6 +208,7 @@ pank7_server_exit_callback()
 
 #define DEFAULT_SENT_DATA \
   "HTTP/1.1 200 OK\r\n" \
+  "Connection: close\r\n" \
   "Content-Type: text/html; charset=UTF-8\r\n" \
   "Content-Length: 82\r\n" \
   "\r\n" \
@@ -275,6 +276,7 @@ pank7_server_read_callback(EV_P_ ev_io *w, int revents)
       if (st->debug_mode == true)
         fprintf(stderr, "(%d)", w->fd);
       perror("recv");
+      close(w->fd);
     }
   }
   ev_io_stop(EV_A_ w);
@@ -416,7 +418,6 @@ pank7_server_atexit_handler_register()
 int
 pank7_server_init(struct pank7_server_settings *st)
 {
-  
   /* atexit handlers */
   if (pank7_server_atexit_handler_register() != 0) {
     return 1;
