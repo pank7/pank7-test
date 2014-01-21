@@ -302,25 +302,25 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
   if (ret == 0) {
     if (svc->debug_mode == true)
       fprintf(stderr, "connection(%d) closed by peer\n", w->fd);
+    ev_io_stop(EV_A_ w);
     close(w->fd);
+    free(w);
     --svc->current_conns;
   } else if (ret < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      struct ev_io              *watcher = NULL;
-      watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
-      ev_io_init(watcher, pank7_svc_write_callback,
-                 w->fd, EV_WRITE);
-      ev_io_start(EV_A_ watcher);
+      ev_io_stop(EV_A_ w);
+      ev_io_init(w, pank7_svc_write_callback, w->fd, EV_WRITE);
+      ev_io_start(EV_A_ w);
     } else {
       if (svc->debug_mode == true)
         fprintf(stderr, "(%d)", w->fd);
       perror("recv");
+      ev_io_stop(EV_A_ w);
       close(w->fd);
+      free(w);
       --svc->current_conns;
     }
   }
-  ev_io_stop(EV_A_ w);
-  free(w);
 }
 
 void
