@@ -10,6 +10,7 @@
 
 #include        <sys/types.h>
 #include        <sys/stat.h>
+#include        <sys/resource.h>
 
 #include        <netinet/in.h>
 #include        <netinet/tcp.h>
@@ -20,7 +21,7 @@
 #define SHORT_STRING_LENGTH     256
 #define MEDIUM_STRING_LENGTH    1024
 
-struct pank7_svc_settings
+struct pank7_svc
 {
   char                  name[SHORT_STRING_LENGTH];
   bool                  daemon_mode;
@@ -44,26 +45,27 @@ struct pank7_svc_settings
 };
 
 void
-default_pank7_svc_settings(struct pank7_svc_settings *st)
+default_pank7_svc(struct pank7_svc *svc)
 {
   char          default_name[] = "pank7-svc";
   long          nc = sysconf(_SC_NPROCESSORS_ONLN);
 
-  strcpy(st->name, default_name);
-  st->daemon_mode = false;
+  strcpy(svc->name, default_name);
+  svc->daemon_mode = false;
 #ifdef _DEBUG
-  st->debug_mode = true;
+  svc->debug_mode = true;
 #else  /* _DEBUG */
-  st->debug_mode = false;
+  svc->debug_mode = false;
 #endif /* _DEBUG */
-  st->thread_num = nc;
-  st->fifo_path[0] = '\0';
-  st->loop = NULL;
-  st->loop_flags = 0;
-  strcpy(st->listen_host, "localhost");
-  st->listen_port = 7777;
-  st->period = 0.0;
-  st->current_conns = 0;
+  svc->thread_num = nc;
+  svc->fifo_path[0] = '\0';
+  svc->loop = NULL;
+  svc->loop_flags = 0;
+  strcpy(svc->listen_host, "localhost");
+  svc->listen_port = 7777;
+  svc->period = 0.0;
+  svc->max_conns = 5000;
+  svc->current_conns = 0;
 
   return;
 }
@@ -79,12 +81,12 @@ print_help(int argc, char *argv[])
 }
 
 void
-print_sys_info(int argc, char *argv[], struct pank7_svc_settings *st)
+print_sys_info(int argc, char *argv[], struct pank7_svc *svc)
 {
   struct ev_loop        *loop = EV_DEFAULT;
   unsigned int          sb = ev_backend(loop);
 
-  fprintf(stdout, "name: %s\n", st->name);
+  fprintf(stdout, "name: %s\n", svc->name);
   fprintf(stdout, "default backend(%08X): ", sb);
   if (sb & EVBACKEND_SELECT) fprintf(stdout, "SELECT");
   if (sb & EVBACKEND_POLL) fprintf(stdout, "POLL");
@@ -102,7 +104,7 @@ print_sys_info(int argc, char *argv[], struct pank7_svc_settings *st)
 }
 
 int
-parse_args(struct pank7_svc_settings *st, int argc, char *argv[])
+parse_args(struct pank7_svc *svc, int argc, char *argv[])
 {
   int           ch;
 
@@ -129,55 +131,55 @@ parse_args(struct pank7_svc_settings *st, int argc, char *argv[])
       exit(0);
       break;
     case 'i':
-      print_sys_info(argc, argv, st);
+      print_sys_info(argc, argv, svc);
       exit(0);
       break;
     case 'n':
-      strncpy(st->name, optarg, SHORT_STRING_LENGTH - 1);
+      strncpy(svc->name, optarg, SHORT_STRING_LENGTH - 1);
       break;
     case 'd':
-      st->daemon_mode = true;
+      svc->daemon_mode = true;
       break;
     case 'D': 
-      st->debug_mode = true;
+      svc->debug_mode = true;
       break;
     case 'c':
-      st->max_conns = strtol(optarg, NULL, 10);
+      svc->max_conns = strtol(optarg, NULL, 10);
       break;
     case 'P':
       if (optarg != NULL) {
         ev_tstamp       period = strtod(optarg, NULL);
-        st->period = period;
+        svc->period = period;
       } else {
-        st->period = 10.0;
+        svc->period = 10.0;
       }
-      fprintf(stdout, "will add a period(%.2fs) event\n", st->period);
+      fprintf(stderr, "will add a period(%.2fs) event\n", svc->period);
       break;
     case 'H':
-      strncpy(st->listen_host, optarg, SHORT_STRING_LENGTH - 1);
+      strncpy(svc->listen_host, optarg, SHORT_STRING_LENGTH - 1);
       break;
     case 'p':
       {
         unsigned long   port = strtoul(optarg, NULL, 10);
-        st->listen_port = port;
+        svc->listen_port = port;
       }
       break;
     case 'I':
-      strncpy(st->fifo_path, optarg, MEDIUM_STRING_LENGTH - 1);
+      strncpy(svc->fifo_path, optarg, MEDIUM_STRING_LENGTH - 1);
       break;
     case 'u':
       break;
     case 'e':
-      st->loop_flags |= EVFLAG_NOENV;
+      svc->loop_flags |= EVFLAG_NOENV;
       break;
     case 'o':
-      st->loop_flags |= EVFLAG_NOINOTIFY;
+      svc->loop_flags |= EVFLAG_NOINOTIFY;
       break;
     case 's':
-      st->loop_flags |= EVFLAG_SIGNALFD;
+      svc->loop_flags |= EVFLAG_SIGNALFD;
       break;
     case 'k':
-      st->loop_flags |= EVBACKEND_KQUEUE;
+      svc->loop_flags |= EVBACKEND_KQUEUE;
       break;
     default:
       return 1;
@@ -210,26 +212,26 @@ setup_nonblocking_socket(int s)
 static void
 pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
 {
-  struct pank7_svc_settings     *st;
-  unsigned int                  sb = ev_backend(EV_A);
+  struct pank7_svc      *svc;
+  unsigned int          sb = ev_backend(EV_A);
 
-  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
+  svc = (struct pank7_svc *)ev_userdata(EV_A);
 
-  fprintf(stdout, "loop count: %d, ", ev_iteration(EV_A));
-  fprintf(stdout, "event depth: %d, ", ev_depth(EV_A));
-  fprintf(stdout, "pending count: %d, ", ev_pending_count(EV_A));
+  fprintf(stderr, "loop count: %d, ", ev_iteration(EV_A));
+  fprintf(stderr, "event depth: %d, ", ev_depth(EV_A));
+  fprintf(stderr, "pending count: %d, ", ev_pending_count(EV_A));
 
-  fprintf(stdout, "backend: ");
-  if (sb & EVBACKEND_SELECT) fprintf(stdout, "SELECT");
-  if (sb & EVBACKEND_POLL) fprintf(stdout, "POLL");
-  if (sb & EVBACKEND_EPOLL) fprintf(stdout, "EPOLL");
-  if (sb & EVBACKEND_KQUEUE) fprintf(stdout, "KQUEUE");
-  if (sb & EVBACKEND_DEVPOLL) fprintf(stdout, "DEVPOLL");
-  if (sb & EVBACKEND_PORT) fprintf(stdout, "PORT");
-  fprintf(stdout, ", ");
+  fprintf(stderr, "backend: ");
+  if (sb & EVBACKEND_SELECT) fprintf(stderr, "SELECT");
+  if (sb & EVBACKEND_POLL) fprintf(stderr, "POLL");
+  if (sb & EVBACKEND_EPOLL) fprintf(stderr, "EPOLL");
+  if (sb & EVBACKEND_KQUEUE) fprintf(stderr, "KQUEUE");
+  if (sb & EVBACKEND_DEVPOLL) fprintf(stderr, "DEVPOLL");
+  if (sb & EVBACKEND_PORT) fprintf(stderr, "PORT");
+  fprintf(stderr, ", ");
 
-  fprintf(stdout, "current cons: %lu", st->current_conns);
-  fprintf(stdout, "\n");
+  fprintf(stderr, "current conns: %lu", svc->current_conns);
+  fprintf(stderr, "\n");
 }
 
 void
@@ -248,17 +250,17 @@ pank7_svc_exit_callback()
 void
 pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_svc_settings     *st;
-  ssize_t                       ret;
-  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
-  char                          send_data[] = DEFAULT_SEND_DATA;
-  char                          *ptr = send_data;
-  size_t                        len = strlen(send_data);
+  struct pank7_svc      *svc;
+  ssize_t               ret;
+  svc = (struct pank7_svc *)ev_userdata(EV_A);
+  char                  send_data[] = DEFAULT_SEND_DATA;
+  char                  *ptr = send_data;
+  size_t                len = strlen(send_data);
 
   while (true) {
     ret = send(w->fd, ptr, len, 0);
     if (ret < 0) break;
-    if (st->debug_mode == true)
+    if (svc->debug_mode == true)
       fprintf(stderr, "send(%d:%ld)\n", w->fd, ret);
     if (ret == len) break;
     ptr += ret;
@@ -271,7 +273,7 @@ pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
     perror("send");
   }
   close(w->fd);
-  --st->current_conns;
+  --svc->current_conns;
   ev_io_stop(EV_A_ w);
   free(w);
 }
@@ -279,12 +281,12 @@ pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
 void
 pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_svc_settings     *st;
-  char                          buf[MEDIUM_STRING_LENGTH];
-  ssize_t                       ret;
+  struct pank7_svc      *svc;
+  char                  buf[MEDIUM_STRING_LENGTH];
+  ssize_t               ret;
   // socklen_t                     slen = 0;
 
-  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
+  svc = (struct pank7_svc *)ev_userdata(EV_A);
 
   buf[MEDIUM_STRING_LENGTH - 1] = '\0';
   while (true) {
@@ -293,40 +295,39 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
     // ret = recvfrom(w->fd, buf, MEDIUM_STRING_LENGTH - 1, 0, NULL, &slen);
     if (ret <= 0) break;
     buf[ret] = '\0';
-    if (st->debug_mode == true)
+    if (svc->debug_mode == true)
       fprintf(stderr, "recv(%d:%ld): %s", w->fd, ret, buf);
   }
 
   if (ret == 0) {
-    if (st->debug_mode == true)
+    if (svc->debug_mode == true)
       fprintf(stderr, "connection(%d) closed by peer\n", w->fd);
+    ev_io_stop(EV_A_ w);
     close(w->fd);
-    --st->current_conns;
+    free(w);
+    --svc->current_conns;
   } else if (ret < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      struct ev_io              *watcher = NULL;
-      watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
-      ev_io_init(watcher, pank7_svc_write_callback,
-                 w->fd, EV_WRITE);
-      ev_io_start(EV_A_ watcher);
+      ev_io_stop(EV_A_ w);
+      ev_io_init(w, pank7_svc_write_callback, w->fd, EV_WRITE);
+      ev_io_start(EV_A_ w);
     } else {
-      if (st->debug_mode == true)
+      if (svc->debug_mode == true)
         fprintf(stderr, "(%d)", w->fd);
       perror("recv");
+      ev_io_stop(EV_A_ w);
       close(w->fd);
-      --st->current_conns;
+      free(w);
+      --svc->current_conns;
     }
   }
-  ev_io_stop(EV_A_ w);
-  free(w);
 }
 
 void
 pank7_svc_accept_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_svc_settings     *st;
-  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
-
+  struct pank7_svc              *svc;
+  svc = (struct pank7_svc *)ev_userdata(EV_A);
   struct sockaddr_storage       ss;
   socklen_t                     slen = sizeof(ss);
   int                           infd;
@@ -345,10 +346,10 @@ pank7_svc_accept_callback(EV_P_ ev_io *w, int revents)
     ev_io_init(watcher, pank7_svc_read_callback,
                infd, EV_READ);
     ev_io_start(EV_A_ watcher);
-    ++st->current_conns;
+    ++svc->current_conns;
   }
 
-  if (st->debug_mode == true)
+  if (svc->debug_mode == true)
     fprintf(stderr, "incoming connection(%d)\n", infd);
 
   return;
@@ -371,37 +372,37 @@ new_tcp_socket(const char *host)
 }
 
 int
-pank7_listener_event_init(struct pank7_svc_settings *st)
+pank7_listener_event_init(struct pank7_svc *svc)
 {
-  st->listen_socket = new_tcp_socket(st->listen_host);
-  if (st->listen_socket == -1) {
+  svc->listen_socket = new_tcp_socket(svc->listen_host);
+  if (svc->listen_socket == -1) {
     return 1;
   }
 
   int           flags = -1;
   struct linger ling = {0, 0};
 
-  setsockopt(st->listen_socket, SOL_SOCKET, SO_REUSEADDR,
+  setsockopt(svc->listen_socket, SOL_SOCKET, SO_REUSEADDR,
              (void *)&flags, sizeof(flags));
-  setsockopt(st->listen_socket, SOL_SOCKET, SO_KEEPALIVE,
+  setsockopt(svc->listen_socket, SOL_SOCKET, SO_KEEPALIVE,
              (void *)&flags, sizeof(flags));
-  setsockopt(st->listen_socket, SOL_SOCKET, SO_LINGER,
+  setsockopt(svc->listen_socket, SOL_SOCKET, SO_LINGER,
              (void *)&ling, sizeof(ling));
-  setsockopt(st->listen_socket, IPPROTO_TCP, TCP_NODELAY,
+  setsockopt(svc->listen_socket, IPPROTO_TCP, TCP_NODELAY,
              (void *)&flags, sizeof(flags));
 
   struct sockaddr_in    sin;
   memset(&sin, 0, sizeof(sin));
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = htonl(INADDR_ANY);
-  sin.sin_port = htons(st->listen_port);
-  if (bind(st->listen_socket, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+  sin.sin_port = htons(svc->listen_port);
+  if (bind(svc->listen_socket, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
     /* error message */
     perror("bind");
     return -1;
   }
 
-  if (listen(st->listen_socket, 16) < 0) {
+  if (listen(svc->listen_socket, 16) < 0) {
     /* error message */
     perror("listen");
     return -1;
@@ -420,19 +421,19 @@ pank7_svc_close_io_callback(EV_P_ int type, void *w)
 static void
 pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
 {
-  struct pank7_svc_settings     *st;
-  st = (struct pank7_svc_settings *)ev_userdata(EV_A);
+  struct pank7_svc      *svc;
+  svc = (struct pank7_svc *)ev_userdata(EV_A);
 
-  if (st->debug_mode)
+  if (svc->debug_mode)
     fprintf(stderr, "signal(%d) caught, quit\n", w->signum);
 
-  ev_io_stop(EV_A_ &st->listen_watcher);
-  ev_signal_stop(EV_A_ &st->sigterm_watcher);
-  ev_signal_stop(EV_A_ &st->sigquit_watcher);
-  ev_signal_stop(EV_A_ &st->sigint_watcher);
+  ev_io_stop(EV_A_ &svc->listen_watcher);
+  ev_signal_stop(EV_A_ &svc->sigterm_watcher);
+  ev_signal_stop(EV_A_ &svc->sigquit_watcher);
+  ev_signal_stop(EV_A_ &svc->sigint_watcher);
 
-  if (st->period > 0.0) {
-    ev_periodic_stop(EV_A_ &st->period_watcher);
+  if (svc->period > 0.0) {
+    ev_periodic_stop(EV_A_ &svc->period_watcher);
   }
 
   ev_break(EV_A_ EVBREAK_ALL);
@@ -441,16 +442,16 @@ pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
 }
 
 int
-pank7_svc_signal_handler_register(struct pank7_svc_settings *st)
+pank7_svc_signal_handler_register(struct pank7_svc *svc)
 {
-  ev_signal_init(&st->sigterm_watcher, pank7_svc_signal_callback, SIGTERM);
-  ev_signal_start(st->loop, &st->sigterm_watcher);
+  ev_signal_init(&svc->sigterm_watcher, pank7_svc_signal_callback, SIGTERM);
+  ev_signal_start(svc->loop, &svc->sigterm_watcher);
 
-  ev_signal_init(&st->sigquit_watcher, pank7_svc_signal_callback, SIGQUIT);
-  ev_signal_start(st->loop, &st->sigquit_watcher);
+  ev_signal_init(&svc->sigquit_watcher, pank7_svc_signal_callback, SIGQUIT);
+  ev_signal_start(svc->loop, &svc->sigquit_watcher);
 
-  ev_signal_init(&st->sigint_watcher, pank7_svc_signal_callback, SIGINT);
-  ev_signal_start(st->loop, &st->sigint_watcher);
+  ev_signal_init(&svc->sigint_watcher, pank7_svc_signal_callback, SIGINT);
+  ev_signal_start(svc->loop, &svc->sigint_watcher);
 
   return 0;
 }
@@ -462,7 +463,7 @@ pank7_svc_atexit_handler_register()
 }
 
 int
-pank7_svc_set_limits(struct pank7_svc_settings *st)
+pank7_svc_set_limits(struct pank7_svc *svc)
 {
   struct rlimit rlim;
   /*
@@ -474,7 +475,7 @@ pank7_svc_set_limits(struct pank7_svc_settings *st)
     perror("getrlimit");
     return 1;
   } else {
-    int maxfiles = st->max_conns;
+    int maxfiles = svc->max_conns;
     if (rlim.rlim_cur < maxfiles)
       rlim.rlim_cur = maxfiles + 3;
     if (rlim.rlim_max < rlim.rlim_cur)
@@ -490,38 +491,38 @@ pank7_svc_set_limits(struct pank7_svc_settings *st)
 }
 
 int
-pank7_svc_init(struct pank7_svc_settings *st)
+pank7_svc_init(struct pank7_svc *svc)
 {
   /* atexit handlers */
   if (pank7_svc_atexit_handler_register() != 0) {
     return 1;
   }
   /* set limits */
-  if (pank7_svc_set_limits(st) != 0) {
+  if (pank7_svc_set_limits(svc) != 0) {
     return 1;
   }
 
   /* get the default event loop from libev */
-  st->loop = ev_default_loop(st->loop_flags);
-  ev_set_userdata(st->loop, (void *)st);
+  svc->loop = ev_default_loop(svc->loop_flags);
+  ev_set_userdata(svc->loop, (void *)svc);
 
-  if (pank7_listener_event_init(st) != 0) {
+  if (pank7_listener_event_init(svc) != 0) {
     /* error message here */
     return 1;
   }
 
-  ev_io_init(&st->listen_watcher, pank7_svc_accept_callback,
-             st->listen_socket, EV_READ);
-  ev_io_start(st->loop, &st->listen_watcher);
+  ev_io_init(&svc->listen_watcher, pank7_svc_accept_callback,
+             svc->listen_socket, EV_READ);
+  ev_io_start(svc->loop, &svc->listen_watcher);
 
-  if (st->period > 0.0) {
-    ev_periodic_init(&st->period_watcher, pank7_svc_period_callback,
-                     0.0, st->period, NULL);
-    ev_periodic_start(st->loop, &st->period_watcher);
+  if (svc->period > 0.0) {
+    ev_periodic_init(&svc->period_watcher, pank7_svc_period_callback,
+                     0.0, svc->period, NULL);
+    ev_periodic_start(svc->loop, &svc->period_watcher);
   }
 
   /* signal handlers */
-  if (pank7_svc_signal_handler_register(st) != 0) {
+  if (pank7_svc_signal_handler_register(svc) != 0) {
     return 1;
   }
   
@@ -529,11 +530,11 @@ pank7_svc_init(struct pank7_svc_settings *st)
 }
 
 void
-pank7_svc_run(struct pank7_svc_settings *st)
+pank7_svc_run(struct pank7_svc *svc)
 {
-  ev_run(st->loop, 0);
+  ev_run(svc->loop, 0);
 
-  ev_loop_destroy(st->loop);
+  ev_loop_destroy(svc->loop);
 
   return;
 }
@@ -541,20 +542,20 @@ pank7_svc_run(struct pank7_svc_settings *st)
 int
 main(int argc, char *argv[], char *env[])
 {
-  struct pank7_svc_settings     settings;
+  struct pank7_svc      svc;
 
-  default_pank7_svc_settings(&settings);
+  default_pank7_svc(&svc);
 
-  if (parse_args(&settings, argc, argv) != 0) {
+  if (parse_args(&svc, argc, argv) != 0) {
     print_help(argc, argv);
     return 1;
   }
 
-  if (pank7_svc_init(&settings) != 0) {
+  if (pank7_svc_init(&svc) != 0) {
     return 1;
   }
 
-  pank7_svc_run(&settings);
+  pank7_svc_run(&svc);
           
   return 0;
 }
