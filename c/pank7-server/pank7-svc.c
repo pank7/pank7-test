@@ -64,6 +64,7 @@ default_pank7_svc(struct pank7_svc *svc)
   strcpy(svc->listen_host, "localhost");
   svc->listen_port = 7777;
   svc->period = 0.0;
+  svc->max_conns = 5000;
   svc->current_conns = 0;
 
   return;
@@ -152,7 +153,7 @@ parse_args(struct pank7_svc *svc, int argc, char *argv[])
       } else {
         svc->period = 10.0;
       }
-      fprintf(stdout, "will add a period(%.2fs) event\n", svc->period);
+      fprintf(stderr, "will add a period(%.2fs) event\n", svc->period);
       break;
     case 'H':
       strncpy(svc->listen_host, optarg, SHORT_STRING_LENGTH - 1);
@@ -216,21 +217,21 @@ pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
 
   svc = (struct pank7_svc *)ev_userdata(EV_A);
 
-  fprintf(stdout, "loop count: %d, ", ev_iteration(EV_A));
-  fprintf(stdout, "event depth: %d, ", ev_depth(EV_A));
-  fprintf(stdout, "pending count: %d, ", ev_pending_count(EV_A));
+  fprintf(stderr, "loop count: %d, ", ev_iteration(EV_A));
+  fprintf(stderr, "event depth: %d, ", ev_depth(EV_A));
+  fprintf(stderr, "pending count: %d, ", ev_pending_count(EV_A));
 
-  fprintf(stdout, "backend: ");
-  if (sb & EVBACKEND_SELECT) fprintf(stdout, "SELECT");
-  if (sb & EVBACKEND_POLL) fprintf(stdout, "POLL");
-  if (sb & EVBACKEND_EPOLL) fprintf(stdout, "EPOLL");
-  if (sb & EVBACKEND_KQUEUE) fprintf(stdout, "KQUEUE");
-  if (sb & EVBACKEND_DEVPOLL) fprintf(stdout, "DEVPOLL");
-  if (sb & EVBACKEND_PORT) fprintf(stdout, "PORT");
-  fprintf(stdout, ", ");
+  fprintf(stderr, "backend: ");
+  if (sb & EVBACKEND_SELECT) fprintf(stderr, "SELECT");
+  if (sb & EVBACKEND_POLL) fprintf(stderr, "POLL");
+  if (sb & EVBACKEND_EPOLL) fprintf(stderr, "EPOLL");
+  if (sb & EVBACKEND_KQUEUE) fprintf(stderr, "KQUEUE");
+  if (sb & EVBACKEND_DEVPOLL) fprintf(stderr, "DEVPOLL");
+  if (sb & EVBACKEND_PORT) fprintf(stderr, "PORT");
+  fprintf(stderr, ", ");
 
-  fprintf(stdout, "current cons: %lu", svc->current_conns);
-  fprintf(stdout, "\n");
+  fprintf(stderr, "current conns: %lu", svc->current_conns);
+  fprintf(stderr, "\n");
 }
 
 void
