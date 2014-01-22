@@ -336,9 +336,6 @@ pank7_svc_accept_callback(EV_P_ ev_io *w, int revents)
   if (infd < 0) {
     /* error message */
     perror("accept");
-  } else if (infd > FD_SETSIZE) {
-    perror("FD_SETSIZE");
-    close(infd);
   } else {
     struct ev_io                *watcher = NULL;
     watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
