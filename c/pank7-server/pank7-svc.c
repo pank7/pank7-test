@@ -41,10 +41,11 @@ struct pank7_svc
   ev_signal             sigterm_watcher;
   ev_signal             sigquit_watcher;
   ev_signal             sigint_watcher;
+  ev_signal             sigpipe_watcher;
   size_t                current_conns;
 };
 
-void
+static void
 default_pank7_svc(struct pank7_svc *svc)
 {
   char          default_name[] = "pank7-svc";
@@ -70,7 +71,7 @@ default_pank7_svc(struct pank7_svc *svc)
   return;
 }
 
-void
+static void
 print_help(int argc, char *argv[])
 {
   fprintf(stderr, "usage: %s [-hi]\n", argv[0]);
@@ -80,7 +81,7 @@ print_help(int argc, char *argv[])
   return;
 }
 
-void
+static void
 print_sys_info(int argc, char *argv[], struct pank7_svc *svc)
 {
   struct ev_loop        *loop = EV_DEFAULT;
@@ -103,7 +104,7 @@ print_sys_info(int argc, char *argv[], struct pank7_svc *svc)
   return;
 }
 
-int
+static int
 parse_args(struct pank7_svc *svc, int argc, char *argv[])
 {
   int           ch;
@@ -234,11 +235,6 @@ pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
   fprintf(stderr, "\n");
 }
 
-void
-pank7_svc_exit_callback()
-{
-}
-
 #define DEFAULT_SEND_DATA \
   "HTTP/1.1 200 OK\r\n" \
   "Connection: close\r\n" \
@@ -247,7 +243,7 @@ pank7_svc_exit_callback()
   "\r\n" \
   "<html><head><title>pank7-svc</title></head><body><h1>pank7-svc</h1></body></html>\n"
 
-void
+static void
 pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
 {
   struct pank7_svc      *svc;
@@ -278,7 +274,7 @@ pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
   free(w);
 }
 
-void
+static void
 pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
 {
   struct pank7_svc      *svc;
@@ -323,7 +319,7 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
   }
 }
 
-void
+static void
 pank7_svc_accept_callback(EV_P_ ev_io *w, int revents)
 {
   struct pank7_svc              *svc;
@@ -368,7 +364,7 @@ new_tcp_socket(const char *host)
   return s;
 }
 
-int
+static int
 pank7_listener_event_init(struct pank7_svc *svc)
 {
   svc->listen_socket = new_tcp_socket(svc->listen_host);
@@ -409,13 +405,6 @@ pank7_listener_event_init(struct pank7_svc *svc)
 }
 
 static void
-pank7_svc_close_io_callback(EV_P_ int type, void *w) __attribute__((unused));
-static void
-pank7_svc_close_io_callback(EV_P_ int type, void *w)
-{
-}
-
-static void
 pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
 {
   struct pank7_svc      *svc;
@@ -428,6 +417,7 @@ pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
   ev_signal_stop(EV_A_ &svc->sigterm_watcher);
   ev_signal_stop(EV_A_ &svc->sigquit_watcher);
   ev_signal_stop(EV_A_ &svc->sigint_watcher);
+  ev_signal_stop(EV_A_ &svc->sigpipe_watcher);
 
   if (svc->period > 0.0) {
     ev_periodic_stop(EV_A_ &svc->period_watcher);
@@ -438,7 +428,7 @@ pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
   return;
 }
 
-int
+static int
 pank7_svc_signal_handler_register(struct pank7_svc *svc)
 {
   ev_signal_init(&svc->sigterm_watcher, pank7_svc_signal_callback, SIGTERM);
@@ -450,16 +440,19 @@ pank7_svc_signal_handler_register(struct pank7_svc *svc)
   ev_signal_init(&svc->sigint_watcher, pank7_svc_signal_callback, SIGINT);
   ev_signal_start(svc->loop, &svc->sigint_watcher);
 
+  ev_signal_init(&svc->sigpipe_watcher, pank7_svc_signal_callback, SIGPIPE);
+  ev_signal_start(svc->loop, &svc->sigpipe_watcher);
+
   return 0;
 }
 
-int
+static int
 pank7_svc_atexit_handler_register()
 {
   return 0;
 }
 
-int
+static int
 pank7_svc_set_limits(struct pank7_svc *svc)
 {
   struct rlimit rlim;
@@ -487,7 +480,7 @@ pank7_svc_set_limits(struct pank7_svc *svc)
   return 0;
 }
 
-int
+static int
 pank7_svc_init(struct pank7_svc *svc)
 {
   /* atexit handlers */
@@ -526,7 +519,7 @@ pank7_svc_init(struct pank7_svc *svc)
   return 0;
 }
 
-void
+static void
 pank7_svc_run(struct pank7_svc *svc)
 {
   ev_run(svc->loop, 0);
