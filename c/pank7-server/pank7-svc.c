@@ -21,6 +21,15 @@
 #define SHORT_STRING_LENGTH     256
 #define MEDIUM_STRING_LENGTH    1024
 
+struct pank7_svc;
+
+struct pank7_thread
+{
+  struct pank7_svc      *svc;
+  struct ev_loop        *loop;
+  ev_async              async_watcher;
+};
+
 struct pank7_svc
 {
   char                  name[SHORT_STRING_LENGTH];
@@ -28,7 +37,9 @@ struct pank7_svc
   bool                  debug_mode;
   bool                  udp_listen_on;
   unsigned int          thread_num;
+  struct pank7_thread   *threads;
   unsigned int          max_conns;
+  size_t                current_conns;
   char                  fifo_path[MEDIUM_STRING_LENGTH];
   struct ev_loop        *loop;
   int                   loop_flags;
@@ -42,7 +53,7 @@ struct pank7_svc
   ev_signal             sigquit_watcher;
   ev_signal             sigint_watcher;
   ev_signal             sigpipe_watcher;
-  size_t                current_conns;
+  ev_cleanup            cleanup_watcher;
 };
 
 static void
@@ -59,6 +70,7 @@ default_pank7_svc(struct pank7_svc *svc)
   svc->debug_mode = false;
 #endif /* _DEBUG */
   svc->thread_num = nc;
+  svc->threads = NULL;
   svc->fifo_path[0] = '\0';
   svc->loop = NULL;
   svc->loop_flags = 0;
@@ -411,7 +423,21 @@ pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
   svc = (struct pank7_svc *)ev_userdata(EV_A);
 
   if (svc->debug_mode)
-    fprintf(stderr, "signal(%d) caught, quit\n", w->signum);
+    fprintf(stderr, "signal(%d) caught\n", w->signum);
+
+  ev_break(EV_A_ EVBREAK_ALL);
+
+  return;
+}
+
+static void
+pank7_svc_cleanup_callback(EV_P_ ev_cleanup *w, int revents)
+{
+  struct pank7_svc      *svc;
+  svc = (struct pank7_svc *)ev_userdata(EV_A);
+
+  if (svc->debug_mode)
+    fprintf(stderr, "cleanup\n");
 
   ev_io_stop(EV_A_ &svc->listen_watcher);
   ev_signal_stop(EV_A_ &svc->sigterm_watcher);
@@ -422,8 +448,6 @@ pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
   if (svc->period > 0.0) {
     ev_periodic_stop(EV_A_ &svc->period_watcher);
   }
-
-  ev_break(EV_A_ EVBREAK_ALL);
 
   return;
 }
@@ -446,9 +470,19 @@ pank7_svc_signal_handler_register(struct pank7_svc *svc)
   return 0;
 }
 
+static void
+pank7_svc_atexit_handler(void)
+{
+  fprintf(stdout, "quit\n");
+
+  return;
+}
+
 static int
 pank7_svc_atexit_handler_register()
 {
+  atexit(pank7_svc_atexit_handler);
+
   return 0;
 }
 
@@ -481,6 +515,14 @@ pank7_svc_set_limits(struct pank7_svc *svc)
 }
 
 static int
+pank7_svc_worker_threads_init(struct pank7_svc *svc)
+{
+  
+
+  return 0;
+}
+
+static int
 pank7_svc_init(struct pank7_svc *svc)
 {
   /* atexit handlers */
@@ -496,8 +538,12 @@ pank7_svc_init(struct pank7_svc *svc)
   svc->loop = ev_default_loop(svc->loop_flags);
   ev_set_userdata(svc->loop, (void *)svc);
 
+  ev_cleanup_init(&svc->cleanup_watcher, pank7_svc_cleanup_callback);
+  ev_cleanup_start(svc->loop, &svc->cleanup_watcher);
+
   if (pank7_listener_event_init(svc) != 0) {
     /* error message here */
+    ev_loop_destroy(svc->loop);
     return 1;
   }
 
@@ -513,9 +559,16 @@ pank7_svc_init(struct pank7_svc *svc)
 
   /* signal handlers */
   if (pank7_svc_signal_handler_register(svc) != 0) {
+    ev_loop_destroy(svc->loop);
     return 1;
   }
   
+  /* worker threads */
+  if (pank7_svc_worker_threads_init(svc) != 0) {
+    ev_loop_destroy(svc->loop);
+    return 1;
+  }
+
   return 0;
 }
 
