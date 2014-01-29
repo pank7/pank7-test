@@ -56,6 +56,10 @@ struct pank7_svc
   ev_cleanup            cleanup_watcher;
 };
 
+#define EVUD(n)                                 \
+  struct pank7_svc      *n;                     \
+  n = (struct pank7_svc *)ev_userdata(EV_A);    \
+
 static void
 default_pank7_svc(struct pank7_svc *svc)
 {
@@ -225,10 +229,8 @@ setup_nonblocking_socket(int s)
 static void
 pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
 {
-  struct pank7_svc      *svc;
+  EVUD(svc);
   unsigned int          sb = ev_backend(EV_A);
-
-  svc = (struct pank7_svc *)ev_userdata(EV_A);
 
   fprintf(stderr, "loop count: %d, ", ev_iteration(EV_A));
   fprintf(stderr, "event depth: %d, ", ev_depth(EV_A));
@@ -258,9 +260,8 @@ pank7_svc_period_callback(EV_P_ ev_periodic *w, int revents)
 static void
 pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_svc      *svc;
+  EVUD(svc);
   ssize_t               ret;
-  svc = (struct pank7_svc *)ev_userdata(EV_A);
   char                  send_data[] = DEFAULT_SEND_DATA;
   char                  *ptr = send_data;
   size_t                len = strlen(send_data);
@@ -289,12 +290,10 @@ pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
 static void
 pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_svc      *svc;
+  EVUD(svc);
   char                  buf[MEDIUM_STRING_LENGTH];
   ssize_t               ret;
   // socklen_t                     slen = 0;
-
-  svc = (struct pank7_svc *)ev_userdata(EV_A);
 
   buf[MEDIUM_STRING_LENGTH - 1] = '\0';
   while (true) {
@@ -334,8 +333,7 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
 static void
 pank7_svc_accept_callback(EV_P_ ev_io *w, int revents)
 {
-  struct pank7_svc              *svc;
-  svc = (struct pank7_svc *)ev_userdata(EV_A);
+  EVUD(svc);
   struct sockaddr_storage       ss;
   socklen_t                     slen = sizeof(ss);
   int                           infd;
@@ -419,8 +417,7 @@ pank7_listener_event_init(struct pank7_svc *svc)
 static void
 pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
 {
-  struct pank7_svc      *svc;
-  svc = (struct pank7_svc *)ev_userdata(EV_A);
+  EVUD(svc);
 
   if (svc->debug_mode)
     fprintf(stderr, "signal(%d) caught\n", w->signum);
@@ -433,8 +430,7 @@ pank7_svc_signal_callback(EV_P_ ev_signal *w, int revents)
 static void
 pank7_svc_cleanup_callback(EV_P_ ev_cleanup *w, int revents)
 {
-  struct pank7_svc      *svc;
-  svc = (struct pank7_svc *)ev_userdata(EV_A);
+  EVUD(svc);
 
   if (svc->debug_mode)
     fprintf(stderr, "cleanup\n");
