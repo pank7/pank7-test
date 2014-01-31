@@ -18,6 +18,8 @@
 
 #include        <ev.h>
 
+#include        "http_parser.h"
+
 #define SHORT_STRING_LENGTH     256
 #define MEDIUM_STRING_LENGTH    1024
 
@@ -29,6 +31,29 @@ struct pank7_thread
   struct ev_loop        *loop;
   ev_async              async_watcher;
 };
+
+struct pank7_http_connection
+{
+  ev_io                 w;
+  http_parser           hp;
+  char                  *msg;
+  size_t                msglen;
+};
+
+static int
+pank7_http_connection_init(struct pank7_http_connection *c,
+                           int s, int ev, void (*cb)(EV_P_ ev_io *, int))
+{
+  ev_io_init(&c->w, cb, s, ev);
+  c->w.data = (void *)c;
+  http_parser_init(&c->hp, HTTP_REQUEST);
+  c->msg = NULL;
+  c->msglen = 0;
+
+  return 0;
+}
+
+#define WUD(w, n) struct pank7_http_connection *n = (struct pank7_http_connection *)(w)->data
 
 struct pank7_svc
 {
@@ -54,11 +79,10 @@ struct pank7_svc
   ev_signal             sigint_watcher;
   ev_signal             sigpipe_watcher;
   ev_cleanup            cleanup_watcher;
+  http_parser_settings  hps;
 };
 
-#define EVUD(n)                                 \
-  struct pank7_svc      *n;                     \
-  n = (struct pank7_svc *)ev_userdata(EV_A);    \
+#define EVUD(n) struct pank7_svc *n = (struct pank7_svc *)ev_userdata(EV_A)
 
 static void
 default_pank7_svc(struct pank7_svc *svc)
@@ -83,6 +107,7 @@ default_pank7_svc(struct pank7_svc *svc)
   svc->period = 0.0;
   svc->max_conns = 5000;
   svc->current_conns = 0;
+  memset((void *)&svc->hps, 0, sizeof(svc->hps));
 
   return;
 }
@@ -261,6 +286,7 @@ static void
 pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
 {
   EVUD(svc);
+  WUD(w, conn);
   ssize_t               ret;
   char                  send_data[] = DEFAULT_SEND_DATA;
   char                  *ptr = send_data;
@@ -284,15 +310,18 @@ pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
   close(w->fd);
   --svc->current_conns;
   ev_io_stop(EV_A_ w);
-  free(w);
+  free(conn);
 }
 
 static void
 pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
 {
   EVUD(svc);
+  WUD(w, conn);
   char                  buf[MEDIUM_STRING_LENGTH];
   ssize_t               ret;
+  size_t                len = 0;
+  bool                  has_error = false;
   // socklen_t                     slen = 0;
 
   buf[MEDIUM_STRING_LENGTH - 1] = '\0';
@@ -301,32 +330,63 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
     // ret = read(w->fd, buf, MEDIUM_STRING_LENGTH - 1);
     // ret = recvfrom(w->fd, buf, MEDIUM_STRING_LENGTH - 1, 0, NULL, &slen);
     if (ret <= 0) break;
+    len += ret;
     buf[ret] = '\0';
-    if (svc->debug_mode == true)
+    if (svc->debug_mode == true) {
       fprintf(stderr, "recv(%d:%ld): %s", w->fd, ret, buf);
+      char              *p = buf;
+      while (*p++) {
+        fprintf(stderr, " %02X", (unsigned int)*p);
+        if ((p - buf) % 16 == 0) fprintf(stderr, "\n");
+      }
+      fprintf(stderr, "\n");
+    }
   }
 
   if (ret == 0) {
     if (svc->debug_mode == true)
       fprintf(stderr, "connection(%d) closed by peer\n", w->fd);
-    ev_io_stop(EV_A_ w);
-    close(w->fd);
-    free(w);
-    --svc->current_conns;
+    has_error = true;
   } else if (ret < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      ev_io_stop(EV_A_ w);
-      ev_io_init(w, pank7_svc_write_callback, w->fd, EV_WRITE);
-      ev_io_start(EV_A_ w);
-    } else {
+    if (errno != EAGAIN && errno != EWOULDBLOCK) {
       if (svc->debug_mode == true)
         fprintf(stderr, "(%d)", w->fd);
       perror("recv");
-      ev_io_stop(EV_A_ w);
-      close(w->fd);
-      free(w);
-      --svc->current_conns;
+      has_error = true;
     }
+  }
+
+  if (has_error) {
+    ev_io_stop(EV_A_ w);
+    close(w->fd);
+    free(conn);
+    --svc->current_conns;
+    return;
+  }
+
+  /* OK, let's see look into the message */
+  size_t        nparsed;
+  nparsed = http_parser_execute(&conn->hp, &svc->hps, buf, len);
+  if (nparsed != len) {
+    if (svc->debug_mode == true)
+      fprintf(stderr, "HTTP request parse error: %s (%s)\n",
+              http_errno_description(HTTP_PARSER_ERRNO(&conn->hp)),
+              http_errno_name(HTTP_PARSER_ERRNO(&conn->hp)));
+    has_error = true;
+  } else {
+    if (HTTP_PARSER_ERRNO(&conn->hp) == HPE_OK) {
+      ev_io_stop(EV_A_ w);
+      ev_io_init(w, pank7_svc_write_callback, w->fd, EV_WRITE);
+      ev_io_start(EV_A_ w);
+    }
+  }
+
+  if (has_error) {
+    ev_io_stop(EV_A_ w);
+    close(w->fd);
+    free(conn);
+    --svc->current_conns;
+    return;
   }
 }
 
@@ -343,12 +403,11 @@ pank7_svc_accept_callback(EV_P_ ev_io *w, int revents)
     /* error message */
     perror("accept");
   } else {
-    struct ev_io                *watcher = NULL;
-    watcher = (struct ev_io *)malloc(sizeof(struct ev_io));
+    struct pank7_http_connection        *conn = NULL;
+    conn = (struct pank7_http_connection *)malloc(sizeof(struct pank7_http_connection));
     setup_nonblocking_socket(infd);
-    ev_io_init(watcher, pank7_svc_read_callback,
-               infd, EV_READ);
-    ev_io_start(EV_A_ watcher);
+    pank7_http_connection_init(conn, infd, EV_READ, pank7_svc_read_callback);
+    ev_io_start(EV_A_ &conn->w);
     ++svc->current_conns;
   }
 
