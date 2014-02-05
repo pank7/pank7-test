@@ -36,9 +36,8 @@ struct pank7_http_connection
 {
   ev_io                 w;
   http_parser           hp;
+  bool                  u;
   bool                  fin;
-  char                  *msg;
-  size_t                msglen;
   void                  *data;
 };
 
@@ -54,9 +53,8 @@ pank7_http_connection_init(struct pank7_http_connection *c,
   c->w.data = (void *)c;
   http_parser_init(&c->hp, HTTP_REQUEST);
   c->hp.data = (void *)c;
+  c->fin = true;
   c->fin = false;
-  c->msg = NULL;
-  c->msglen = 0;
   c->data = (void *)svc;
 
   return 0;
@@ -91,6 +89,45 @@ struct pank7_svc
 
 #define EVUD(n) struct pank7_svc *n = (struct pank7_svc *)ev_userdata(EV_A)
 #define HCUD(hc, n) struct pank7_svc *n = (struct pank7_svc *)(hc)->data
+
+static int
+http_url_callback(http_parser *hp, const char *u, size_t l)
+{
+  HPUD(hp, conn);
+  HCUD(conn, svc);
+  struct http_parser_url        hpu;
+  int                           ret;
+
+  ret = http_parser_parse_url(u, l, 0, &hpu);
+
+  if (svc->debug_mode == true) {
+    fprintf(stderr, "http url: %.*s\n", (int)l, u);
+    fprintf(stderr, "\tport: %u\n", hpu.port);
+    if (hpu.field_set & (1 << UF_SCHEMA))
+      fprintf(stderr, "\tschema: %.*s\n", hpu.field_data[UF_SCHEMA].len,
+              u + hpu.field_data[UF_SCHEMA].off);
+    if (hpu.field_set & (1 << UF_HOST))
+      fprintf(stderr, "\thost: %.*s\n", hpu.field_data[UF_HOST].len,
+              u + hpu.field_data[UF_HOST].off);
+    if (hpu.field_set & (1 << UF_PORT))
+      fprintf(stderr, "\tport: %.*s\n", hpu.field_data[UF_PORT].len,
+              u + hpu.field_data[UF_PORT].off);
+    if (hpu.field_set & (1 << UF_PATH))
+      fprintf(stderr, "\tpath: %.*s\n", hpu.field_data[UF_PATH].len,
+              u + hpu.field_data[UF_PATH].off);
+    if (hpu.field_set & (1 << UF_QUERY))
+      fprintf(stderr, "\tquery: %.*s\n", hpu.field_data[UF_QUERY].len,
+              u + hpu.field_data[UF_QUERY].off);
+    if (hpu.field_set & (1 << UF_FRAGMENT))
+      fprintf(stderr, "\tfragment: %.*s\n", hpu.field_data[UF_FRAGMENT].len,
+              u + hpu.field_data[UF_FRAGMENT].off);
+    if (hpu.field_set & (1 << UF_USERINFO))
+      fprintf(stderr, "\tuserinfo: %.*s\n", hpu.field_data[UF_USERINFO].len,
+              u + hpu.field_data[UF_USERINFO].off);
+  }
+
+  return ret;
+}
 
 static int
 http_header_field_callback(http_parser *hp, const char *f, size_t l)
@@ -176,6 +213,7 @@ default_pank7_svc(struct pank7_svc *svc)
   svc->hps.on_headers_complete = http_headers_complete_callback;
   svc->hps.on_header_field = http_header_field_callback;
   svc->hps.on_header_value = http_header_value_callback;
+  svc->hps.on_url = http_url_callback;
 
   return;
 }
@@ -355,7 +393,6 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents);
 
 static void
 pank7_svc_write_callback(EV_P_ ev_io *w, int revents);
-
 
 static void
 pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
