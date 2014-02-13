@@ -4,7 +4,7 @@ OBJECTS		= pank7-svc.o
 CC		= clang
 INCPATHS	= -I../../http-parser
 LIBPATHS	= -L../../http-parser
-LINKLIBS	= -lev -lhttp_parser
+LINKLIBS	= -lev -lhttp_parser -lpthread
 #CFLAGS		= -Wall -O3 -g -c
 CFLAGS		= ${INCPATHS} -Wall -g -c
 OFLAGS		= ${LIBPATHS}
@@ -22,4 +22,4 @@ tags:
 	ctags -R
 
 pank7-svc.out: pank7-svc.o
-	${CC} ${OFLAGS} -o $@ $^ -lev -lhttp_parser
+	${CC} ${OFLAGS} -o $@ $^ -lev -lhttp_parser -lpthread

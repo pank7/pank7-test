@@ -16,6 +16,8 @@
 #include        <netinet/tcp.h>
 #include        <sys/socket.h>
 
+#include        <pthread.h>
+
 #include        <ev.h>
 
 #include        "http_parser.h"
@@ -29,14 +31,16 @@ struct pank7_thread
 {
   struct pank7_svc      *svc;
   struct ev_loop        *loop;
-  ev_async              async_watcher;
+  pthread_t             thread_id;
+  pthread_attr_t        thread_attr;
+  ev_async              work_watcher;
+  ev_async              stop_watcher;
 };
 
 struct pank7_http_connection
 {
   ev_io                 w;
   http_parser           hp;
-  bool                  u;
   bool                  fin;
   void                  *data;
 };
@@ -272,6 +276,7 @@ parse_args(struct pank7_svc *svc, int argc, char *argv[])
                       "o"       /* EVFLAG_NOINOTIFY for loop */
                       "s"       /* EVFLAG_SIGNALFD for loop */
                       "k"       /* force KQUEUE for loop */
+                      "t:"      /* worker thread number */
                       )) != -1) {
     switch (ch) {
     case 'h':
@@ -293,6 +298,9 @@ parse_args(struct pank7_svc *svc, int argc, char *argv[])
       break;
     case 'c':
       svc->max_conns = strtol(optarg, NULL, 10);
+      break;
+    case 't':
+      svc->thread_num = strtol(optarg, NULL, 10);
       break;
     case 'P':
       if (optarg != NULL) {
@@ -630,6 +638,15 @@ pank7_svc_cleanup_callback(EV_P_ ev_cleanup *w, int revents)
     ev_periodic_stop(EV_A_ &svc->period_watcher);
   }
 
+  int   i;
+  for (i = 0; i < svc->thread_num; ++i) {
+    ev_async_stop(svc->threads[i].loop, &svc->threads[i].work_watcher);
+    ev_async_stop(svc->threads[i].loop, &svc->threads[i].stop_watcher);
+    ev_loop_destroy(svc->threads[i].loop);
+  }
+
+  free(svc->threads);
+
   return;
 }
 
@@ -695,10 +712,65 @@ pank7_svc_set_limits(struct pank7_svc *svc)
   return 0;
 }
 
+static void
+pank7_svc_thread_work_callback(EV_P_ ev_async *w, int revents)
+{
+  EVUD(svc);
+
+  if (svc->debug_mode == true)
+    fprintf(stderr, "thread %lu: incoming work!\n", pthread_self());
+
+  return;
+}
+
+
+static void
+pank7_svc_thread_stop_callback(EV_P_ ev_async *w, int revents)
+{
+  EVUD(svc);
+  //  struct pank7_thread   *thread = (struct pank7_thread *)w->data;
+
+  if (svc->debug_mode == true)
+    fprintf(stderr, "thread %lu: stop!\n", pthread_self());
+
+  ev_break(EV_A_ EVBREAK_ALL);
+
+  return;
+}
+
+static void *
+pank7_svc_worker_thread(void *arg)
+{
+  struct pank7_thread   *thread = (struct pank7_thread *)arg;
+  struct pank7_svc      *svc = thread->svc;
+
+  if (svc->debug_mode == true)
+    fprintf(stderr, "thread %lu: start!\n", pthread_self());
+
+  ev_run(thread->loop, 0);
+
+  return NULL;
+}
+
 static int
 pank7_svc_worker_threads_init(struct pank7_svc *svc)
 {
-  
+  int           i;
+
+  svc->threads = (struct pank7_thread *)malloc(sizeof(struct pank7_thread) * svc->thread_num);
+
+  for (i = 0; i < svc->thread_num; ++i) {
+    svc->threads[i].svc = svc;
+    svc->threads[i].loop = ev_loop_new(svc->loop_flags);
+    ev_set_userdata(svc->threads[i].loop, (void *)svc);
+    ev_async_init(&svc->threads[i].work_watcher, pank7_svc_thread_work_callback);
+    svc->threads[i].work_watcher.data = (void *)&svc->threads[i];
+    ev_async_init(&svc->threads[i].stop_watcher, pank7_svc_thread_stop_callback);
+    svc->threads[i].stop_watcher.data = (void *)&svc->threads[i];
+    pthread_attr_init(&svc->threads[i].thread_attr);
+    pthread_create(&svc->threads[i].thread_id, &svc->threads[i].thread_attr,
+                   pank7_svc_worker_thread, &svc->threads[i]);
+  }
 
   return 0;
 }
