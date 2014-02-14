@@ -16,9 +16,13 @@
 #include        <netinet/tcp.h>
 #include        <sys/socket.h>
 
+#include        <pthread.h>
+
 #include        <ev.h>
 
 #include        "http_parser.h"
+
+#include        "list.h"
 
 #define SHORT_STRING_LENGTH     256
 #define MEDIUM_STRING_LENGTH    1024
@@ -29,7 +33,10 @@ struct pank7_thread
 {
   struct pank7_svc      *svc;
   struct ev_loop        *loop;
-  ev_async              async_watcher;
+  pthread_t             thread_id;
+  pthread_attr_t        thread_attr;
+  ev_async              work_watcher;
+  ev_async              stop_watcher;
 };
 
 struct pank7_http_connection
@@ -37,8 +44,6 @@ struct pank7_http_connection
   ev_io                 w;
   http_parser           hp;
   bool                  fin;
-  char                  *msg;
-  size_t                msglen;
   void                  *data;
 };
 
@@ -54,9 +59,8 @@ pank7_http_connection_init(struct pank7_http_connection *c,
   c->w.data = (void *)c;
   http_parser_init(&c->hp, HTTP_REQUEST);
   c->hp.data = (void *)c;
+  c->fin = true;
   c->fin = false;
-  c->msg = NULL;
-  c->msglen = 0;
   c->data = (void *)svc;
 
   return 0;
@@ -91,6 +95,45 @@ struct pank7_svc
 
 #define EVUD(n) struct pank7_svc *n = (struct pank7_svc *)ev_userdata(EV_A)
 #define HCUD(hc, n) struct pank7_svc *n = (struct pank7_svc *)(hc)->data
+
+static int
+http_url_callback(http_parser *hp, const char *u, size_t l)
+{
+  HPUD(hp, conn);
+  HCUD(conn, svc);
+  struct http_parser_url        hpu;
+  int                           ret;
+
+  ret = http_parser_parse_url(u, l, 0, &hpu);
+
+  if (svc->debug_mode == true) {
+    fprintf(stderr, "http url: %.*s\n", (int)l, u);
+    fprintf(stderr, "\tport: %u\n", hpu.port);
+    if (hpu.field_set & (1 << UF_SCHEMA))
+      fprintf(stderr, "\tschema: %.*s\n", hpu.field_data[UF_SCHEMA].len,
+              u + hpu.field_data[UF_SCHEMA].off);
+    if (hpu.field_set & (1 << UF_HOST))
+      fprintf(stderr, "\thost: %.*s\n", hpu.field_data[UF_HOST].len,
+              u + hpu.field_data[UF_HOST].off);
+    if (hpu.field_set & (1 << UF_PORT))
+      fprintf(stderr, "\tport: %.*s\n", hpu.field_data[UF_PORT].len,
+              u + hpu.field_data[UF_PORT].off);
+    if (hpu.field_set & (1 << UF_PATH))
+      fprintf(stderr, "\tpath: %.*s\n", hpu.field_data[UF_PATH].len,
+              u + hpu.field_data[UF_PATH].off);
+    if (hpu.field_set & (1 << UF_QUERY))
+      fprintf(stderr, "\tquery: %.*s\n", hpu.field_data[UF_QUERY].len,
+              u + hpu.field_data[UF_QUERY].off);
+    if (hpu.field_set & (1 << UF_FRAGMENT))
+      fprintf(stderr, "\tfragment: %.*s\n", hpu.field_data[UF_FRAGMENT].len,
+              u + hpu.field_data[UF_FRAGMENT].off);
+    if (hpu.field_set & (1 << UF_USERINFO))
+      fprintf(stderr, "\tuserinfo: %.*s\n", hpu.field_data[UF_USERINFO].len,
+              u + hpu.field_data[UF_USERINFO].off);
+  }
+
+  return ret;
+}
 
 static int
 http_header_field_callback(http_parser *hp, const char *f, size_t l)
@@ -176,6 +219,7 @@ default_pank7_svc(struct pank7_svc *svc)
   svc->hps.on_headers_complete = http_headers_complete_callback;
   svc->hps.on_header_field = http_header_field_callback;
   svc->hps.on_header_value = http_header_value_callback;
+  svc->hps.on_url = http_url_callback;
 
   return;
 }
@@ -234,6 +278,7 @@ parse_args(struct pank7_svc *svc, int argc, char *argv[])
                       "o"       /* EVFLAG_NOINOTIFY for loop */
                       "s"       /* EVFLAG_SIGNALFD for loop */
                       "k"       /* force KQUEUE for loop */
+                      "t:"      /* worker thread number */
                       )) != -1) {
     switch (ch) {
     case 'h':
@@ -255,6 +300,9 @@ parse_args(struct pank7_svc *svc, int argc, char *argv[])
       break;
     case 'c':
       svc->max_conns = strtol(optarg, NULL, 10);
+      break;
+    case 't':
+      svc->thread_num = strtol(optarg, NULL, 10);
       break;
     case 'P':
       if (optarg != NULL) {
@@ -356,7 +404,6 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents);
 static void
 pank7_svc_write_callback(EV_P_ ev_io *w, int revents);
 
-
 static void
 pank7_svc_write_callback(EV_P_ ev_io *w, int revents)
 {
@@ -410,6 +457,7 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
   size_t                len = 0;
   bool                  close_conn = false;
   // socklen_t             slen = 0;
+  char                  *p = NULL;
 
   buf[MEDIUM_STRING_LENGTH - 1] = '\0';
   while (true) {
@@ -421,9 +469,9 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
     buf[ret] = '\0';
     if (svc->debug_mode == true) {
       fprintf(stderr, "recv(%d:%ld): %s", w->fd, ret, buf);
-      char              *p = buf;
+      p = buf;
       while (*p++) {
-        fprintf(stderr, " %02X", (unsigned int)*p);
+        fprintf(stderr, " %02X", (unsigned int)*(p - 1));
         if ((p - buf) % 16 == 0) fprintf(stderr, "\n");
       }
       fprintf(stderr, "\n");
@@ -593,6 +641,19 @@ pank7_svc_cleanup_callback(EV_P_ ev_cleanup *w, int revents)
     ev_periodic_stop(EV_A_ &svc->period_watcher);
   }
 
+  int   i;
+  void  *retval = NULL;
+  for (i = 0; i < svc->thread_num; ++i) {
+    ev_async_send(svc->threads[i].loop, &svc->threads[i].stop_watcher);
+    pthread_join(svc->threads[i].thread_id, &retval);
+    pthread_attr_destroy(&svc->threads[i].thread_attr);
+    ev_async_stop(svc->threads[i].loop, &svc->threads[i].work_watcher);
+    ev_async_stop(svc->threads[i].loop, &svc->threads[i].stop_watcher);
+    ev_loop_destroy(svc->threads[i].loop);
+  }
+
+  free(svc->threads);
+
   return;
 }
 
@@ -639,7 +700,7 @@ pank7_svc_set_limits(struct pank7_svc *svc)
    * as needed.
    */
   if (getrlimit(RLIMIT_NOFILE, &rlim) != 0) {
-    fprintf(stderr, "failed to getrlimit number of files\n");
+    fprintf(stderr, "Failed to getrlimit number of files\n");
     perror("getrlimit");
     return 1;
   } else {
@@ -649,7 +710,8 @@ pank7_svc_set_limits(struct pank7_svc *svc)
     if (rlim.rlim_max < rlim.rlim_cur)
       rlim.rlim_max = rlim.rlim_cur;
     if (setrlimit(RLIMIT_NOFILE, &rlim) != 0) {
-      fprintf(stderr, "failed to set rlimit for open files. Try running as root or requesting smaller maxconns value.\n");
+      fprintf(stderr, "Failed to set rlimit for open files. "
+              "Try running as root or requesting smaller maxconns value.\n");
       perror("setrlimit");
       return 1;
     }
@@ -658,10 +720,67 @@ pank7_svc_set_limits(struct pank7_svc *svc)
   return 0;
 }
 
+static void
+pank7_svc_thread_work_callback(EV_P_ ev_async *w, int revents)
+{
+  EVUD(svc);
+
+  if (svc->debug_mode == true)
+    fprintf(stderr, "thread %lu: incoming work!\n", pthread_self());
+
+  return;
+}
+
+
+static void
+pank7_svc_thread_stop_callback(EV_P_ ev_async *w, int revents)
+{
+  EVUD(svc);
+  //  struct pank7_thread   *thread = (struct pank7_thread *)w->data;
+
+  if (svc->debug_mode == true)
+    fprintf(stderr, "thread %lu: stop!\n", pthread_self());
+
+  ev_break(EV_A_ EVBREAK_ALL);
+
+  return;
+}
+
+static void *
+pank7_svc_worker_thread(void *arg)
+{
+  struct pank7_thread   *thread = (struct pank7_thread *)arg;
+  struct pank7_svc      *svc = thread->svc;
+
+  if (svc->debug_mode == true)
+    fprintf(stderr, "thread %lu: start!\n", pthread_self());
+
+  ev_run(thread->loop, 0);
+
+  return NULL;
+}
+
 static int
 pank7_svc_worker_threads_init(struct pank7_svc *svc)
 {
-  
+  int           i;
+
+  svc->threads = (struct pank7_thread *)malloc(sizeof(struct pank7_thread) * svc->thread_num);
+
+  for (i = 0; i < svc->thread_num; ++i) {
+    svc->threads[i].svc = svc;
+    svc->threads[i].loop = ev_loop_new(svc->loop_flags);
+    ev_set_userdata(svc->threads[i].loop, (void *)svc);
+    ev_async_init(&svc->threads[i].work_watcher, pank7_svc_thread_work_callback);
+    svc->threads[i].work_watcher.data = (void *)&svc->threads[i];
+    ev_async_start(svc->threads[i].loop, &svc->threads[i].work_watcher);
+    ev_async_init(&svc->threads[i].stop_watcher, pank7_svc_thread_stop_callback);
+    svc->threads[i].stop_watcher.data = (void *)&svc->threads[i];
+    ev_async_start(svc->threads[i].loop, &svc->threads[i].stop_watcher);
+    pthread_attr_init(&svc->threads[i].thread_attr);
+    pthread_create(&svc->threads[i].thread_id, &svc->threads[i].thread_attr,
+                   pank7_svc_worker_thread, &svc->threads[i]);
+  }
 
   return 0;
 }
