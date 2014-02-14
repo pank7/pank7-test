@@ -22,6 +22,8 @@
 
 #include        "http_parser.h"
 
+#include        "list.h"
+
 #define SHORT_STRING_LENGTH     256
 #define MEDIUM_STRING_LENGTH    1024
 
@@ -455,6 +457,7 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
   size_t                len = 0;
   bool                  close_conn = false;
   // socklen_t             slen = 0;
+  char                  *p = NULL;
 
   buf[MEDIUM_STRING_LENGTH - 1] = '\0';
   while (true) {
@@ -466,9 +469,9 @@ pank7_svc_read_callback(EV_P_ ev_io *w, int revents)
     buf[ret] = '\0';
     if (svc->debug_mode == true) {
       fprintf(stderr, "recv(%d:%ld): %s", w->fd, ret, buf);
-      char              *p = buf;
+      p = buf;
       while (*p++) {
-        fprintf(stderr, " %02X", (unsigned int)*p);
+        fprintf(stderr, " %02X", (unsigned int)*(p - 1));
         if ((p - buf) % 16 == 0) fprintf(stderr, "\n");
       }
       fprintf(stderr, "\n");
@@ -639,7 +642,11 @@ pank7_svc_cleanup_callback(EV_P_ ev_cleanup *w, int revents)
   }
 
   int   i;
+  void  *retval = NULL;
   for (i = 0; i < svc->thread_num; ++i) {
+    ev_async_send(svc->threads[i].loop, &svc->threads[i].stop_watcher);
+    pthread_join(svc->threads[i].thread_id, &retval);
+    pthread_attr_destroy(&svc->threads[i].thread_attr);
     ev_async_stop(svc->threads[i].loop, &svc->threads[i].work_watcher);
     ev_async_stop(svc->threads[i].loop, &svc->threads[i].stop_watcher);
     ev_loop_destroy(svc->threads[i].loop);
@@ -693,7 +700,7 @@ pank7_svc_set_limits(struct pank7_svc *svc)
    * as needed.
    */
   if (getrlimit(RLIMIT_NOFILE, &rlim) != 0) {
-    fprintf(stderr, "failed to getrlimit number of files\n");
+    fprintf(stderr, "Failed to getrlimit number of files\n");
     perror("getrlimit");
     return 1;
   } else {
@@ -703,7 +710,8 @@ pank7_svc_set_limits(struct pank7_svc *svc)
     if (rlim.rlim_max < rlim.rlim_cur)
       rlim.rlim_max = rlim.rlim_cur;
     if (setrlimit(RLIMIT_NOFILE, &rlim) != 0) {
-      fprintf(stderr, "failed to set rlimit for open files. Try running as root or requesting smaller maxconns value.\n");
+      fprintf(stderr, "Failed to set rlimit for open files. "
+              "Try running as root or requesting smaller maxconns value.\n");
       perror("setrlimit");
       return 1;
     }
@@ -765,8 +773,10 @@ pank7_svc_worker_threads_init(struct pank7_svc *svc)
     ev_set_userdata(svc->threads[i].loop, (void *)svc);
     ev_async_init(&svc->threads[i].work_watcher, pank7_svc_thread_work_callback);
     svc->threads[i].work_watcher.data = (void *)&svc->threads[i];
+    ev_async_start(svc->threads[i].loop, &svc->threads[i].work_watcher);
     ev_async_init(&svc->threads[i].stop_watcher, pank7_svc_thread_stop_callback);
     svc->threads[i].stop_watcher.data = (void *)&svc->threads[i];
+    ev_async_start(svc->threads[i].loop, &svc->threads[i].stop_watcher);
     pthread_attr_init(&svc->threads[i].thread_attr);
     pthread_create(&svc->threads[i].thread_id, &svc->threads[i].thread_attr,
                    pank7_svc_worker_thread, &svc->threads[i]);
