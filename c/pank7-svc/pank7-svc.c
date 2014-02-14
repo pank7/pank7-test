@@ -726,7 +726,7 @@ pank7_svc_thread_work_callback(EV_P_ ev_async *w, int revents)
   EVUD(svc);
 
   if (svc->debug_mode == true)
-    fprintf(stderr, "thread %lu: incoming work!\n", pthread_self());
+    fprintf(stderr, "thread %016X: incoming work!\n", (unsigned int)pthread_self());
 
   return;
 }
@@ -739,7 +739,7 @@ pank7_svc_thread_stop_callback(EV_P_ ev_async *w, int revents)
   //  struct pank7_thread   *thread = (struct pank7_thread *)w->data;
 
   if (svc->debug_mode == true)
-    fprintf(stderr, "thread %lu: stop!\n", pthread_self());
+    fprintf(stderr, "thread %016X: stop!\n", (unsigned int)pthread_self());
 
   ev_break(EV_A_ EVBREAK_ALL);
 
@@ -753,7 +753,7 @@ pank7_svc_worker_thread(void *arg)
   struct pank7_svc      *svc = thread->svc;
 
   if (svc->debug_mode == true)
-    fprintf(stderr, "thread %lu: start!\n", pthread_self());
+    fprintf(stderr, "thread %016X: start!\n", (unsigned int)pthread_self());
 
   ev_run(thread->loop, 0);
 
