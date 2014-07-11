@@ -4,6 +4,9 @@ import Prelude
 import Data.List
 import Data.Bits
 
+main :: IO()
+main = do putStrLn "Fib 10"
+
 naive_fib :: Int -> Integer
 naive_fib n
     | n < 0 = -1
