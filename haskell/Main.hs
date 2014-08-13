@@ -5,7 +5,7 @@ import Text.Printf
 import Test
 
 data Season = Spring | Summer | Autumn | Winter
-            deriving (Eq, Ord, Enum, Show, Read)
+              deriving (Eq, Ord, Enum, Show, Read)
 
 data Shape = Circle Float |
              Rectangle Float Float
@@ -34,4 +34,3 @@ lstlen lst = lstlen' lst 0
     where
       lstlen' [] n = n
       lstlen' (s:ss) n = lstlen' ss $ n + 1
-
