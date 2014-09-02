@@ -3,7 +3,7 @@
 # -std=c++0x enables ISO C++ 11 standard
 # -I.. pulls in the Version_test.h file for conditional compilation
 #      of code the uses features that might not yet be implemented
-CC = g++-4.8
+CC = g++-4.9
 CCFLAGS = -std=c++11 -O1 -I..
 
 # Some programs include headers defined in earlier chapters
@@ -49,7 +49,7 @@ all: $(OBJECTS)
 # executing "make clean" in a subdirectory will remove all
 # files named core or any file ending in .obj, or .stackdump
 clean:
-	rm -rf *.o core *.stackdump
+	rm -rf *.exe *.o core *.stackdump
 
 # target to remove executable files as well as object and core files
 clobber: clean
