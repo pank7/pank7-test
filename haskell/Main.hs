@@ -3,6 +3,7 @@ module Main where
 import Text.Printf
 
 import Test
+import Hoge
 
 data Season = Spring | Summer | Autumn | Winter
               deriving (Eq, Ord, Enum, Show, Read)
@@ -31,6 +32,8 @@ main = do putStrLn "What's your name?"
           printf "average: %s\n" $ show $ average [777.777]
           printf "average: %s\n" $ show $ average [1,2,3,4,5]
           test
+          run_string_calc_tests
+          hoge
 
 lstlen :: [a] -> Int
 lstlen lst = lstlen' lst 0
