@@ -11,7 +11,7 @@ hoge = do printf "Welcome to hoge!\n"
           printf "hoge 2: %d\n" $ string_calc "1,3"
 
 string_calc :: String -> Integer
-string_calc expr = sum $ map read $ filter (\x -> x /= "") $ splitOn "," expr
+string_calc expr = sum $ map read $ filter (\x -> x /= "") $ splitOn "," $ filter (\x -> x /= ' ') expr
 
 -- unit tests
 
@@ -21,6 +21,7 @@ big_number_test = TestCase (assertEqual "\"10000000000000000000,1\"" 10000000000
 empty_expr_test = TestCase (assertEqual "(empty string)" 0 (string_calc ""))
 comma_comma_expr_test = TestCase (assertEqual "1,,1" 2 (string_calc "1,,1"))
 negative_number_test = TestCase (assertEqual "1,,-1" 0 (string_calc "1,,-1"))
+space_expr_test = TestCase (assertEqual "1, ,-1" 0 (string_calc "1, ,-1"))
 
 string_calc_tests = TestList [
                      TestLabel "simple test" simple_test,
@@ -28,7 +29,8 @@ string_calc_tests = TestList [
                      TestLabel "big number test" big_number_test,
                      TestLabel "empty expr test" empty_expr_test,
                      TestLabel "comma comma expr test" comma_comma_expr_test,
-                     TestLabel "negative number test" negative_number_test
+                     TestLabel "negative number test" negative_number_test,
+                     TestLabel "space expr test" space_expr_test
                     ]
 
 run_string_calc_tests = runTestTT string_calc_tests

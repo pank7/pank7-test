@@ -6,8 +6,8 @@ TARGETS = Main
 
 all: ${TARGETS}
 
-Main: Main.hs
-	${GHC} ${GHCFLAGS} $^ -o $@
+Main: Main.hs Test.hs Hoge.hs
+	${GHC} ${GHCFLAGS} $< -o $@
 
 clean:
 	-rm -rf *.o *.hi ${TARGETS}
