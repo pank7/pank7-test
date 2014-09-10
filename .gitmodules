@@ -7,3 +7,6 @@
 [submodule "pank7-lib"]
 	path = pank7-lib
 	url = git@github.com:pank7/pank7-lib.git
+[submodule "rebar"]
+	path = rebar
+	url = git@github.com:rebar/rebar.git
