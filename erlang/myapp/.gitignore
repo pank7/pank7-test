@@ -1,0 +1,5 @@
+/rebar
+/.eunit
+/.rebar
+/deps
+/rel/myapp
