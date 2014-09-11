@@ -13,6 +13,12 @@ hoge = do printf "Welcome to hoge!\n"
 string_calc :: String -> Integer
 string_calc expr = sum $ map read $ filter (\x -> x /= "") $ splitOn "," $ filter (\x -> elem x "0123456789,-") expr
 
+prime :: Int -> Bool
+prime n | n > 0 = [x | x <- [1..n], n `mod` x == 0] == [1, n]
+
+primes :: Int -> [Int]
+primes n = [x | x <- [2..n], prime x]
+
 -- unit tests
 
 simple_test = TestCase (assertEqual "\"1,1\"" 2 (string_calc "1,1"))
