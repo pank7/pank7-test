@@ -1,11 +1,12 @@
 {application, myapp,
  [
-  {description, ""},
+  {description, "myapp"},
   {vsn, "1"},
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  cowboy
                  ]},
   {mod, { myapp_app, []}},
   {env, []}

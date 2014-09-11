@@ -3,3 +3,4 @@
 /.rebar
 /deps
 /rel/myapp
+/ebin

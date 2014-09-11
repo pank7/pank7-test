@@ -10,3 +10,6 @@
 [submodule "rebar"]
 	path = rebar
 	url = git@github.com:rebar/rebar.git
+[submodule "erlang.mk"]
+	path = erlang.mk
+	url = git@github.com:ninenines/erlang.mk.git

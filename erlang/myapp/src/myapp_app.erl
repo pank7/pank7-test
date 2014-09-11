@@ -10,6 +10,11 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+    Dispatch = cowboy_router:compile([
+				      {'_', [{"/", hello_handler, []}]}
+				     ]),
+    cowboy:start_http(my_http_listener, 100, [{port, 8888}],
+		      [{env, [{dispatch, Dispatch}]}]),
     myapp_sup:start_link().
 
 stop(_State) ->
