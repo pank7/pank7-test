@@ -6,6 +6,9 @@ main(int argc, char *argv[])
   zsys_set_logident(argc > 1 ? argv[1] : "testsub");
   zsys_info("Create subscriber: %s", argc > 1 ? argv[1] : "testsub");
   zsock_t       *s = zsock_new_sub("tcp://localhost:7777", "test");
+  // zsock_t       *s = zsock_new_sub("epgm://en1;239.192.1.1:7777", "test");
+  // zsock_t       *s = zsock_new(ZMQ_SUB);
+  // zsock_connect(s, "epgm://en1;239.192.1.1:7777");
   if (!s) {
     zsys_error("Error creating subscriber: %s",
                strerror(zmq_errno()));

@@ -6,6 +6,9 @@ main(int argc, char *argv[])
   zsys_set_logident("testpub");
   zsys_info("Create publisher");
   zsock_t       *p = zsock_new_pub("tcp://*:7777");
+  // zsock_t       *p = zsock_new_pub("epgm://239.192.1.1:7777");
+  // zsock_t       *p = zsock_new(ZMQ_PUB);
+  // zsock_connect(p, "epgm://en1;239.192.1.1:7777");
   if (!p) {
     zsys_error("Error creating publisher: %s",
                strerror(zmq_errno()));
