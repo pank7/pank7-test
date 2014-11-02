@@ -1,6 +1,6 @@
 .PHONY: all clean tags
 
-TARGETS 	= test.out
+TARGETS 	= test.out testpub.out testsub.out
 
 HOMEPATH = $(shell cd; pwd)
 
