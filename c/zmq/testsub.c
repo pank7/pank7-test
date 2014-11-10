@@ -14,7 +14,6 @@ main(int argc, char *argv[])
                strerror(zmq_errno()));
     exit(EXIT_FAILURE);
   }
-  zsock_set_subscribe(s, "test");
 
   unsigned int  i = 0;
   char          *r = NULL;
